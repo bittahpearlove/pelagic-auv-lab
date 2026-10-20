@@ -120,7 +120,7 @@ class Controller {
     if (state == State::Descend || state == State::Ascend) {
       sampler.observe(s.depthM, s.temperatureC, s.acquiredMs,
                       state == State::Descend ? 1 : -1);
-      speedLimitMps = sampler.speed(mode);
+      speedLimitMps = sampler.speed(mode, s.depthM);
     }
     if (state == State::Descend) {
       targetDepthM = bounded(targetDepthM + speedLimitMps * dt,
@@ -133,7 +133,7 @@ class Controller {
       }
     } else if (state == State::Hold) {
       if (uint32_t(now - holdMs) >= Config::HOLD_MS) {
-        sampler.reset();
+        sampler.reset(true); // Revisit the measured transition band on ascent.
         state = State::Ascend;
       }
     } else if (state == State::Ascend) {
