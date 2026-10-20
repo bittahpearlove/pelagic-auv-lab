@@ -21,7 +21,7 @@ int lab_arm(unsigned int now) {
   Sample s; s.valid = true; s.leak = false; s.voltageV = 12; s.acquiredMs = now;
   return control.arm(s, now, true);
 }
-void lab_tick(unsigned int now, float dt, const float* input, float* out) {
+void tickController(Controller& controller, unsigned int now, float dt, const float* input, float* out) {
   Sample s;
   s.acquiredMs = static_cast<uint32_t>(input[0]);
   s.temperatureRawC = s.temperatureC = input[1];
@@ -29,14 +29,30 @@ void lab_tick(unsigned int now, float dt, const float* input, float* out) {
   s.pressureMbar = 1013.25f + s.depthM * 98.0665f;
   s.voltageV = input[4]; s.currentA = input[5]; s.rollDeg = input[6];
   s.valid = input[7] != 0; s.leak = input[8] != 0;
-  control.update(s, now, true, dt);
-  if (control.state == State::Ready) control.start(now);
-  out[0] = static_cast<int>(control.state); out[1] = control.faults;
-  out[2] = control.verticalCommand; out[3] = control.targetDepthM;
-  out[4] = control.speedLimitMps; out[5] = control.sampler.gradientCpm;
-  out[6] = control.sampler.gradientValid; out[7] = control.sampler.transition;
-  out[8] = static_cast<int>(control.mode);
+  controller.update(s, now, true, dt);
+  if (controller.state == State::Ready) controller.start(now);
+  out[0] = static_cast<int>(controller.state); out[1] = controller.faults;
+  out[2] = controller.verticalCommand; out[3] = controller.targetDepthM;
+  out[4] = controller.speedLimitMps; out[5] = controller.sampler.gradientCpm;
+  out[6] = controller.sampler.gradientValid; out[7] = controller.sampler.transition;
+  out[8] = static_cast<int>(controller.mode);
 }
+void lab_tick(unsigned int now, float dt, const float* input, float* out) {
+  tickController(control, now, dt, input, out);
+}
+// Independent instance: a benchmark never resets the live controller.
+static Controller trial;
+void lab_trial_reset(int mode) {
+  trial.disarm(); trial.selectMode(static_cast<ProfileMode>(mode));
+  Sample s; s.valid=true; s.leak=false; s.voltageV=12;
+  trial.arm(s,0,true);
+}
+void lab_trial_tick(unsigned int now,float dt,const float* input,float* out) {
+  tickController(trial,now,dt,input,out);
+  out[9]=trial.sampler.regionValid; out[10]=trial.sampler.regionLow;
+  out[11]=trial.sampler.regionHigh;
+}
+
 }
 #include "../firmware/auv_nano/Explorer.h"
 static Explorer explorer;
