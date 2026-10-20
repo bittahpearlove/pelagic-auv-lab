@@ -367,7 +367,7 @@ class Lab:
         else:surge=heave=0
         state=2 if active else (5 if int(reason) in (1,2) else 6)
         self.append([self.ms,state,0,self.explore_z,self.measured,self.truth,self.explore_vz,heave,tz,
-            .10 if int(mission_phase) in (0,6,8,9) else min(.04,.08/self.params['tau']) if local==1 else min(.08,.1/self.params['tau']),0,0,int(bool(local)),0,12,0,0,self.explore_x,
+            0 if not active else .10 if int(mission_phase) in (0,6,8,9) else min(.04,.08/self.params['tau']) if local==1 else min(.08,.1/self.params['tau']),0,0,int(bool(local)),0,12,0,0,self.explore_x,
             self.explore_x,surge,'complete' if not active else 'transit' if mission_phase==6 else 'return' if mission_phase==8 else 'ascend' if mission_phase==9 else 'exhausted' if mission_phase==7 else 'monitor' if mission_phase==5 else 'follow' if local==3 else 'probe' if local==2 else 'backtrack' if local==1 else 'descend',int(visits),gx,gz,int(valid),int(reason),
             'nano_v0.14_lab_plant' if self.source=='nano' else 'native_v0.14_lab_plant',self.params['shape'],self.params['tau'],self.params['center'],self.params['width'],self.params['drop'],input_ms,*input_values,self.explore_vx,travel,int(local_exit),'vertical_then_local',int(known_cells),int(rechecks)])
 
