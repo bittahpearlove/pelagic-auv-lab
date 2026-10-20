@@ -4,7 +4,11 @@ Arduino Nano firmware and a local 2D laboratory for exploring how an underwater 
 
 **Research prototype, firmware v0.15.** The controller has been tested on a classic ATmega328P Nano over USB. Water, position, depth and vehicle dynamics are simulated. Real sensor acquisition, underwater localization, onboard storage and physical propulsion are not integrated. Motor outputs are disabled. This is not a field-ready AUV or evidence of Arctic deployment.
 
-![Local experiment workbench](docs/images/workbench.png)
+![Guided laboratory](docs/images/lab-start.png)
+
+## Laboratory follow-up
+
+The [guided lab and failure diagnosis](docs/V015_FOLLOWUP.md) add a Start here page, water presets, clearer experiment navigation, detection/coverage cards, explicit miss penalties and rejection maps. The Nano controller stays at the tested v0.15 baseline; no new sampling-policy superiority is claimed. The original held-out records remain frozen. Added loss scores on those records are retrospective.
 
 ## Current experiment
 
@@ -25,13 +29,13 @@ python -m pip install -r requirements.txt
 python lab/server.py
 ```
 
-Open [127.0.0.1:8765/demo2d](http://127.0.0.1:8765/demo2d). Choose **Adaptive exploration**, select layered water, then Run exploration. Offline mode needs no hardware. Free swim offers keyboard-controlled browser motion; Adaptive profile runs the separate vertical profiling experiment.
+Open [127.0.0.1:8765/demo2d](http://127.0.0.1:8765/demo2d). Start at **Start here**. Choose **Set up a profile** for the primary 1D experiment, or **Open strategy comparison** for a six-method development test. Settings are separate from results. The 2D exploration sandbox remains available as a secondary activity. Offline mode needs no hardware. Free swim offers keyboard-controlled browser motion; Adaptive profile runs the separate vertical profiling experiment.
 
 The lab compiles an isolated native library under `build/lab/` at startup. Full session CSVs persist in `output/runs/`; the screen retains the latest 10,000 rows and CSV export reads the complete session. Reset starts a new file without deleting the old run. The console keeps its latest 500 lines. Only one process may own a Nano USB port.
 
 ## Run the proposal experiment
 
-Open **Research → Compare six strategies** after stopping a live run, or:
+Open **Compare strategies → Compare six strategies** after stopping a live run, or:
 
 ```sh
 python3 tools/compare_profiles.py --repeats 20
@@ -80,6 +84,9 @@ node tests/survey_planner_test.mjs
 `tools/verify_nano_exploration.py` is an optional motor-disabled physical-board/virtual-water test requiring a connected, uploaded Nano. It exercises control decisions, eight-second limits, spatial memory and operator Stop. It is not a hydrodynamic or real-sensor validation.
 
 ## Research scope and documentation
+
+The [20 October review follow-up](docs/REVIEW_FOLLOWUP_20261020.md) documents failure-aware scoring, rejection diagnostics, UI changes and deferred firmware experiments. Firmware remains v0.15.
+
 
 - [v0.15 research model, experiment and results](docs/RESEARCH_V015.md)
 - [Review disposition and remaining physical work](docs/REVIEW_RESPONSE_V015.md)

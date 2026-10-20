@@ -1,4 +1,16 @@
+# Review follow-up - 20 October 2026
+
+Guided lab workflow; failure-aware boundary loss; complete-case counts; paired loss contrasts; evaluator-only rejection diagnostics; presentation talking-points PDF. Controller/firmware v0.15 unchanged. See docs/REVIEW_FOLLOWUP_20261020.md.
+
 # Changelog
+
+## Laboratory follow-up to v0.15
+
+- Guided entry page, water presets, automatic live navigation and comparison settings return.
+- Detection/coverage cards by leg, failure-aware boundary loss, complete-denominator paired bootstrap and flat-water false-positive mission counts.
+- Status-by-depth/transition diagnostics, retrospective missed-case and penalty-sensitivity analysis, duration/accuracy figures and saved comparison restoration.
+- Preserve the Nano v0.15 controller, frozen original evaluation and separate research/exploration images.
+- Prepare the project presentation and physical validation talking points.
 
 ## v0.15 — forward-model research and reproducible evaluation
 
