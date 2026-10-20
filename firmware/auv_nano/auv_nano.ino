@@ -52,7 +52,7 @@ void printConfig() {
 }
 
 void printIdentity() {
-  Serial.print(F("# AUV Nano adaptive v0.13; simulated="));
+  Serial.print(F("# AUV Nano adaptive v0.14; simulated="));
   Serial.print(Config::SIMULATED_SENSORS ? 1 : 0);
   Serial.print(F("; motors="));
   Serial.println(Config::ENABLE_MOTOR_OUTPUTS ? 1 : 0);
