@@ -16,7 +16,7 @@ with lab.lock:
         lab.action(dict(action='source',value='nano'));lab.action(dict(action='connect'))
         deadline=time.monotonic()+10
         while not lab.verified and time.monotonic()<deadline:lab.serial_tick();time.sleep(.01)
-        assert lab.verified and lab.identity.startswith('v0.12'),lab.error or lab.identity
+        assert lab.verified and lab.identity.startswith('v0.13'),lab.error or lab.identity
         identity=lab.identity
         lab.action(dict(action='explore_start',shape='tilted',center=1.3,width=.1,drop=3,tau=2,noise=0,profile_x=4))
         lab.core.lab_explore_begin();lab.core.lab_explore_tau(ctypes.c_float(2))
@@ -45,7 +45,8 @@ with lab.lock:
         assert any(r['explore_phase']=='probe' for r in lab.rows)
         ascent=[r for r in lab.rows if r['explore_phase']=='backtrack']
         assert ascent and ascent[0]['depth_m']-min(r['depth_m'] for r in ascent)>.07
-        assert all(abs(r['x_m']-4)<.002 for r in lab.rows if r['explore_phase'] in ('descend','backtrack'))
+        first_transit=next(r['input_ms'] for r in lab.rows if r['explore_phase']=='transit')
+        assert all(abs(r['x_m']-4)<.002 for r in lab.rows if r['input_ms']<first_transit and r['explore_phase'] in ('descend','backtrack'))
         assert any(r['gradient_2d_valid'] for r in lab.rows)
         assert any(r['explore_phase']=='transit' for r in lab.rows)
         for phase in ('backtrack','probe','monitor'):
@@ -60,7 +61,7 @@ with lab.lock:
                      observations=compared,local_rows=sum(r['transition'] for r in lab.rows),
                      gradient_rows=sum(r['gradient_2d_valid'] for r in lab.rows),
                      final=dict(lab.explore_status),parity_max_absolute_error=max_error,params=lab.params)
-        with (root/'output/logs/nano_v012_exploration.csv').open('w') as f:
+        with (root/'output/logs/nano_v013_exploration.csv').open('w') as f:
             w=csv.DictWriter(f,fieldnames=m.FIELDS);w.writeheader();w.writerows(lab.rows)
         lab.action(dict(action='stop'))
         assert not lab.running and lab.explore_status['reason']==4
@@ -71,5 +72,5 @@ with lab.lock:
         assert summary['disarm_ack']
     finally:
         lab.disconnect()
-        (root/'output/logs/nano_v012_verified.json').write_text(json.dumps(summary,indent=2)+'\n')
+        (root/'output/logs/nano_v013_verified.json').write_text(json.dumps(summary,indent=2)+'\n')
 print(json.dumps(summary,indent=2))
