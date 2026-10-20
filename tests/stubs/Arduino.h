@@ -10,6 +10,7 @@
 #define LED_BUILTIN 13
 extern uint32_t fakeMs;
 extern int pins[32];
+inline uint32_t micros() { return fakeMs*1000; }
 inline uint32_t millis() { return fakeMs; }
 inline int digitalRead(int pin) { return pins[pin]; }
 inline void digitalWrite(int pin, int value) { pins[pin] = value; }
