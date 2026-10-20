@@ -75,6 +75,7 @@ Stop the lab server first:
 bash tools/test.sh
 python3 tests/lab_test.py
 python3 tests/research_test.py
+node tests/research_summary_test.mjs
 node tests/keyboard_test.mjs
 node tests/demo_model_test.mjs
 node tests/thermal_map_test.mjs
