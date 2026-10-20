@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include "Config.h"
 
-enum class ProfileMode : uint8_t { Adaptive, Fast, Slow };
+enum class ProfileMode : uint8_t { Adaptive, Fast, Slow, Medium, Response, ResponseUngated };
 
 // Endpoint gradient over nonoverlapping depth windows. No division near zero,
 // no observations from duplicate acquisition timestamps, no cross-leg history.
-class AdaptiveSampler {
+class AdaptiveLegacy {
  public:
   float gradientCpm = 0;
   bool transition = false;
@@ -66,6 +66,7 @@ class AdaptiveSampler {
     anchorDepth = depth; anchorTemp = temperature; anchorStamp = stamp;
   }
   float speed(ProfileMode mode, float depth = NAN) const {
+    if (mode == ProfileMode::Medium) return .035f;
     const float lagLimit = Config::ALLOWED_LAG_M / Config::PROBE_TAU_S;
     const float slow = fminf(Config::SLOW_SPEED_MPS, lagLimit);
     const bool revisit = regionValid && isfinite(depth) && depth >= regionLow && depth <= regionHigh;
@@ -82,3 +83,5 @@ class AdaptiveSampler {
 static_assert(Config::PROBE_TAU_S > 0 && Config::ALLOWED_LAG_M > 0 &&
               Config::SLOW_SPEED_MPS > 0 && Config::GRADIENT_WINDOW_M > 0,
               "Adaptive parameters must be positive");
+
+using AdaptiveSampler = AdaptiveLegacy; // Stable name retained for older tests and integrations.

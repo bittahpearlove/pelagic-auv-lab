@@ -1,6 +1,7 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
+#include "ProbeModel.h"
 // Measured inputs only. Neither water truth nor analytic gradients enter here.
 struct ExplorationObservation { float x,z,vx,vz,temperature; uint32_t ms; };
 class Explorer {
@@ -9,7 +10,7 @@ class Explorer {
   enum Phase : uint8_t { Descend=0,Backtrack=1,Probe=2,Follow=3,Finished=4,Monitor=5,Transit=6,Exhausted=7,Return=8,Ascend=9 };
   uint8_t reason=0,visits=0,phase=Descend,localStep=0,localExit=0;
   float surge=0,heave=0,targetX=4,targetZ=2.7f,gx=0,gz=0;
-  uint16_t knownCells=0,rechecks=0;
+  uint16_t knownCells=0;
   float trigger=.08f,tau=2,distance=0;
   void begin(){*this=Explorer();active=true;}
   void stop(uint8_t why){active=false;local=false;surge=heave=0;reason=why;phase=Finished;}
@@ -128,11 +129,13 @@ class Explorer {
     if(retrace){
       targetX=o.x;
       const float speed=fminf(.04f,.08f/fmaxf(.1f,tau));
-      const float required=hypotf(o.vx,o.vz)*tau+.30f; // lag + two detection windows
-      const float feasible=3.6f*speed; // reserve 4.4 s of the 8 s for local geometry
-      const float retraceDistance=fminf(required,feasible);
-      targetZ=clip(o.z-retraceDistance,.2f,2.7f);
-      if(o.z-targetZ+.03f<required)localExit=5; // unresolved lag margin, not a validated boundary
+      const InspectionPlan plan=inspectionPlan(hypotf(o.vx,o.vz),tau,speed);
+      // Full inspection is rejected BEFORE movement when it cannot fit.
+      // Preserve the user's bounded upward maneuver, explicitly as partial.
+      if(!plan.fullFeasible)localExit=5;
+      const float travel=plan.fullFeasible?plan.required:fminf(plan.required,plan.available);
+      targetZ=clip(o.z-travel,.2f,2.7f);
+      if(o.z-targetZ+.03f<plan.required)localExit=5;
     }else if(!seedTarget())chooseFrontier(o);
   }
   void resetDetection(const ExplorationObservation&o){
