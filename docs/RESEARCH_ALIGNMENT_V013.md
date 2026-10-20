@@ -1,3 +1,5 @@
+> Exploration policy superseded by [v0.14 bounded search and surface return](NANO_V014_PROFILE_RETURN.md). The vertical Research comparison below is unchanged; open-ended exploration is no longer the current route.
+
 # v0.13: trajectory and original proposal review
 
 Reviewed against all five pages of **Adaptive Temperature Profiling with a Small AUV**, the original project proposal. This review preserves subsequent choices: length–depth views, no prescribed sweep, no total exploration budget, and eight-second local visits/holds. The original PDF remains unchanged.
