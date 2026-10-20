@@ -6,7 +6,7 @@ struct ExplorationObservation { float x,z,vx,vz,temperature; uint32_t ms; };
 class Explorer {
  public:
   bool active=false,local=false,gradientValid=false;
-  enum Phase : uint8_t { Descend=0,Backtrack=1,Probe=2,Follow=3,Finished=4,Monitor=5,Transit=6,Exhausted=7 };
+  enum Phase : uint8_t { Descend=0,Backtrack=1,Probe=2,Follow=3,Finished=4,Monitor=5,Transit=6,Exhausted=7,Return=8,Ascend=9 };
   uint8_t reason=0,visits=0,phase=Descend,localStep=0,localExit=0;
   float surge=0,heave=0,targetX=4,targetZ=2.7f,gx=0,gz=0;
   uint16_t knownCells=0,rechecks=0;
@@ -22,15 +22,17 @@ class Explorer {
     lastX=o.x;lastZ=o.z;markObserved(o.x,o.z);
     if(phase==Descend){
       targetX=descentX;targetZ=2.7f;
-      if(changed(o))startLocal(o,true);
-      if(phase==Descend&&reached(o))enterMonitor(o);
+      if(reached(o))startAscent(o);
+      else if(o.z>=nextInvestigationZ&&changed(o)){resumeZ=o.z;startLocal(o,true);}
     }
     if(phase==Transit){
-      // Check along the track, not just the temperature at the endpoint.
-      if(changed(o))startLocal(o,true);
+      // One deadline covers ALL waypoint hops. No nested investigation may
+      // restart it; observations still contribute to the local measured fit.
+      if(separated(o.x,o.z,fitLastX,fitLastZ,400))addFit(o);
+      if(uint32_t(o.ms-transitStart)>=10000)startReturn(o);
       else if(reached(o))chooseFrontier(o);
     }
-    if(phase==Monitor&&uint32_t(o.ms-phaseStart)>=8000)chooseFrontier(o);
+    if(phase==Monitor||phase==Exhausted)startReturn(o);
     if(local){
       if(separated(o.x,o.z,fitLastX,fitLastZ,400))addFit(o);
       // Every local burst (including retrace) has its own 8 s deadline, shared by retrace and probing.
@@ -40,10 +42,22 @@ class Explorer {
       }else if(reached(o)){
         localStep++;
         if(localStep<2){if(!seedTarget())chooseFrontier(o);}
-        else {if(localExit!=5)localExit=1;enterMonitor(o);}
+        else {if(localExit!=5)localExit=1;chooseFrontier(o);}
       }
     }
-    const float speed=(phase==Descend||phase==Transit)?.10f:phase==Backtrack?fminf(.04f,.08f/fmaxf(.1f,tau)):fminf(.08f,.10f/fmaxf(.1f,tau));
+    if(phase==Return){
+      if(reached(o)){
+        phase=Descend;targetX=descentX;targetZ=2.7f;
+        // Clear reversal/lag history and pass the investigated interval before
+        // rearming. Strict depth progress prevents the same boundary loop.
+        nextInvestigationZ=resumeZ+.25f;resetDetection(o);
+      }else if(uint32_t(o.ms-phaseStart)>=15000)startAscent(o);
+    }
+    if(phase==Ascend){
+      if(o.z<=.14f&&fabsf(o.vz)<.03f){stop(1);return;}
+      if(uint32_t(o.ms-phaseStart)>=60000){stop(6);return;}
+    }
+    const float speed=(phase==Descend||phase==Transit||phase==Return||phase==Ascend)?.10f:phase==Backtrack?fminf(.04f,.08f/fmaxf(.1f,tau)):fminf(.08f,.10f/fmaxf(.1f,tau));
     float vz=1.8f*(targetZ-o.z),vx=1.8f*(targetX-o.x);
     // Limit the vector norm: independent axis clipping allowed sqrt(2)*speed.
     const float magnitude=hypotf(vx,vz);
@@ -53,7 +67,8 @@ class Explorer {
  private:
   bool initialized=false;
   uint8_t evidence=0,count=0,head=0;
-  uint32_t lastMs=0,phaseStart=0;
+  uint32_t lastMs=0,phaseStart=0,transitStart=0;
+  float resumeZ=.2f,nextInvestigationZ=.2f;
   float previousDX=0,previousDZ=0;
   float anchorX=0,anchorZ=0,anchorT=0,centreX=0,centreZ=0,descentX=4,triggerZ=0,lastX=0,lastZ=0;
   float fitLastX=0,fitLastZ=0,fitT=0;
@@ -77,7 +92,7 @@ class Explorer {
   }
   bool reached(const ExplorationObservation&o)const{
     const int32_t dx=int32_t(lroundf(targetX*10000))-int32_t(lroundf(o.x*10000)),dz=int32_t(lroundf(targetZ*10000))-int32_t(lroundf(o.z*10000));
-    const int32_t horizontal=(local||phase==Transit)?350:800,vertical=(local||phase==Transit)?300:600;
+    const int32_t horizontal=(local||phase==Transit||phase==Return)?350:800,vertical=(local||phase==Transit||phase==Return)?300:600;
     return dx>=-horizontal&&dx<=horizontal&&dz>=-vertical&&dz<=vertical;
   }
   bool seedTarget(){
@@ -120,12 +135,18 @@ class Explorer {
       if(o.z-targetZ+.03f<required)localExit=5; // unresolved lag margin, not a validated boundary
     }else if(!seedTarget())chooseFrontier(o);
   }
-  void enterMonitor(const ExplorationObservation&o){
-    local=false;phase=Monitor;phaseStart=o.ms;
-    targetX=clip(o.x,.4f,7.6f);targetZ=clip(o.z,.2f,2.7f);
+  void resetDetection(const ExplorationObservation&o){
+    evidence=0;previousDX=previousDZ=0;anchorX=o.x;anchorZ=o.z;anchorT=o.temperature;
+  }
+  void startReturn(const ExplorationObservation&o){
+    local=false;phase=Return;phaseStart=o.ms;targetX=descentX;targetZ=resumeZ;
+  }
+  void startAscent(const ExplorationObservation&o){
+    local=false;phase=Ascend;phaseStart=o.ms;targetX=o.x;targetZ=.10f;
   }
   void chooseFrontier(const ExplorationObservation&o){
     const bool continuingTransit=phase==Transit;
+    if(!continuingTransit)transitStart=o.ms;
     // Integer millimetres keep distance/turn scores identical on AVR and native.
     // Penalize known-water transit and sharp reversals, not just endpoint length.
     const int32_t ox=lroundf(o.x*1000),oz=lroundf(o.z*1000);
@@ -136,6 +157,7 @@ class Explorer {
       if(observed[i/8]&(1<<(i%8)))continue;
       const int16_t x=ix*125+62,z=iz*125+62;
       if(x<400||x>7600||z<200||z>2700)continue;
+      if(fabsf(x/1000.0f-centreX)>.45f||z/1000.0f<triggerZ-.45f||z/1000.0f>triggerZ+.10f)continue;
       const int32_t dx=x-ox,dz=z-oz,d2=dx*dx+dz*dz;
       if(d2<14400||d2>=best)continue;
       int32_t cost=d2;
@@ -150,11 +172,8 @@ class Explorer {
     local=false;phaseStart=o.ms;
     if(found){phase=Transit;targetX=bx/1000.0f;targetZ=bz/1000.0f;}
     else{
-      // Explicit domain exhaustion: do not invent motion or erase history.
-      phase=Exhausted;targetX=clip(o.x,.4f,7.6f);targetZ=clip(o.z,.2f,2.7f);
+      startReturn(o); // No local frontier: resume the profile, never idle forever.
     }
-    // Short frontier hops must not erase the displacement window or persistent
-    // evidence. Reversal rejection occurs when the next window is evaluated.
-    if(!continuingTransit){evidence=0;previousDX=previousDZ=0;anchorX=o.x;anchorZ=o.z;anchorT=o.temperature;}
+    if(!continuingTransit)resetDetection(o);
   }
 };
