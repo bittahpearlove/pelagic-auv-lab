@@ -1,0 +1,2 @@
+# Optional standalone research figures. Core experiments use the standard library.
+matplotlib>=3.8,<4

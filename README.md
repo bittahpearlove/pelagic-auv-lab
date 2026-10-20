@@ -2,19 +2,17 @@
 
 Arduino Nano firmware and a local 2D laboratory for exploring how an underwater vehicle can spend more measurements near changing temperature boundaries, while accounting for probe response delay.
 
-**Research prototype, firmware v0.14.** The controller has been tested on a classic ATmega328P Nano over USB. Water, position, depth and vehicle dynamics are simulated. Real sensor acquisition, underwater localization, onboard storage and physical propulsion are not integrated. Motor outputs are disabled. This is not a field-ready AUV or evidence of Arctic deployment.
+**Research prototype, firmware v0.15.** The controller has been tested on a classic ATmega328P Nano over USB. Water, position, depth and vehicle dynamics are simulated. Real sensor acquisition, underwater localization, onboard storage and physical propulsion are not integrated. Motor outputs are disabled. This is not a field-ready AUV or evidence of Arctic deployment.
 
 ![Local experiment workbench](docs/images/workbench.png)
 
 ## Current experiment
 
-The controller descends vertically. A persistent measured gradient triggers a slow retrace and local probe, capped at eight seconds. It may then sample nearby unvisited water for **ten seconds total**, across all waypoint changes. It returns to the original descent line and the depth where the detour began, then resumes descending. Another investigation requires at least 0.25 m of further depth progress.
+The primary research experiment is a 0–1 m vertical profile. A new forward sensor model estimates local temperature and gradient without differentiating noisy readings. A response-aware speed governor uses reliability gates, assumed probe lag and an upper lag bound. Legacy adaptive, fixed-fast/medium/slow and an ungated ablation remain available. [Methods and mixed evaluation results](docs/RESEARCH_V015.md) describe what the experiment establishes and what it does not.
 
-At 2.7 m it ascends directly to the simulated surface and completes. Quiet water follows a straight descent/ascent. There are no sweeps or endless frontier searches. Unvisited targets remain inside the local investigation region. A 192-byte bitmap remembers visited 0.125 m cells without preventing the necessary checkpoint return. If no unvisited candidate exists, it immediately returns to the profile.
+The secondary 2D explorer keeps bounded partial upward inspections (8 s), nearby unvisited-water sampling (10 s total), return to its saved descent checkpoint, resumed descent and eventual surfacing. Full retrace feasibility is now checked before movement; a partial inspection is not labelled a resolved boundary. Passage memory is not temperature confidence.
 
-Checkpoint return has a 15 s watchdog: on expiry, attempt ascent from the current location. Ascent has a 60 s watchdog that reports recovery failure if stalled. These are phase limits, not a guarantee of physical recovery; this is a simulated plant with motors disabled. The separate vertical Research comparison is unchanged.
-
-The Nano receives delayed probe temperature and estimated position/velocity over USB, and returns motion requests. The same C++ controller runs natively in offline mode. Simulator truth is used for visualization/evaluation, not supplied as a gradient or map to the controller. Temperature-gradient estimates are local plane fits; no heat-equation PDE solver is required.
+The classic Nano has two firmware images because both experiment families together exceed its flash capacity: **research** (default) and **exploration**. The native lab includes both. Neither image integrates real sensor drivers or enables motors. No PDE solver is required for these local regression experiments.
 
 ## Run the lab
 
@@ -33,22 +31,20 @@ The lab compiles an isolated native library under `build/lab/` at startup. Full 
 
 ## Run the proposal experiment
 
-Open **Research → Compare three strategies** after stopping a live run, or:
+Open **Research → Compare six strategies** after stopping a live run, or:
 
 ```sh
-python3 tools/compare_profiles.py
+python3 tools/compare_profiles.py --repeats 20
 ```
 
-This compares fixed-fast, fixed-slow and adaptive vertical profiles with the same 180 s maximum allowance and three paired-noise repeats each. The adaptive controller remembers measured transition bands for the ascent. Compare descent/ascent errors separately, shared-depth coverage, boundary error, time and completion. A trial ends on surfacing; unused allowance is reported. Simulator reference is ideal water, not independent physical validation. Results and raw samples are saved under `output/experiments/profile_comparison/`.
-
-[Original-proposal review, methods, illustrative results and remaining work](docs/RESEARCH_ALIGNMENT_V013.md) explain why open-ended exploration alone cannot answer the research question. Exploration now returns from bounded detours and eventually surfaces.
+Runs save immutable manifests, source hashes, raw samples and diagnostic/metric files under unique `output/experiments/research/` directories. The quick UI comparison is for development. [The research guide](docs/RESEARCH_V015.md) explains frozen policies, independent evaluation, paired intervals, missing coverage and offline rescoring. The 30-scenario held-out study did **not** establish consistent superiority over fixed-medium: failures and mixed effects are reported rather than hidden.
 
 ## Connect a classic Nano
 
 1. Install the Arduino AVR Boards package and Servo library using Arduino IDE or Arduino CLI.
 2. Open `firmware/auv_nano/auv_nano.ino`. Select Arduino Nano / ATmega328P and your board's serial port. A board with an older bootloader may need the corresponding IDE processor option.
-3. Keep `SIMULATED_SENSORS=true` and `ENABLE_MOTOR_OUTPUTS=false`. Upload the sketch.
-4. Close Serial Monitor, start the lab, select Arduino Nano USB, and click Connect Nano. The lab verifies the firmware identity, simulated-sensor mode and disabled motor outputs before allowing exploration.
+3. Keep `SIMULATED_SENSORS=true` and `ENABLE_MOTOR_OUTPUTS=false`. Upload the sketch for vertical research. Use `bash tools/build_nano.sh exploration` for 2D exploration instead.
+4. Close Serial Monitor, start the lab, select Arduino Nano USB, and click Connect Nano. The lab verifies the firmware identity, simulated-sensor mode and disabled motor outputs and advertised image capabilities before allowing commands.
 
 Auto-selection accepts one recognized FTDI, CH340 or CP210x USB adapter. If several are connected or your adapter is different, choose its port explicitly:
 
@@ -61,8 +57,8 @@ The USB adapter is not proof of board identity; the firmware handshake performs 
 Arduino CLI example after installing its core and Servo library:
 
 ```sh
-arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 firmware/auv_nano
-arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port /dev/ttyUSB0 firmware/auv_nano
+bash tools/build_nano.sh research
+bash tools/arduino.sh upload --fqbn arduino:avr:nano:cpu=atmega328 --port /dev/ttyUSB0 --input-dir build/nano-v015-research --verify
 ```
 
 `tools/arduino.sh` also supports either an existing local CLI installation or `arduino-cli` on PATH. Do not connect actuators expecting physical control from this simulated-sensor firmware.
@@ -74,6 +70,7 @@ Stop the lab server first:
 ```sh
 bash tools/test.sh
 python3 tests/lab_test.py
+python3 tests/research_test.py
 node tests/keyboard_test.mjs
 node tests/demo_model_test.mjs
 node tests/thermal_map_test.mjs
@@ -83,6 +80,11 @@ node tests/survey_planner_test.mjs
 `tools/verify_nano_exploration.py` is an optional motor-disabled physical-board/virtual-water test requiring a connected, uploaded Nano. It exercises control decisions, eight-second limits, spatial memory and operator Stop. It is not a hydrodynamic or real-sensor validation.
 
 ## Research scope and documentation
+
+- [v0.15 research model, experiment and results](docs/RESEARCH_V015.md)
+- [Review disposition and remaining physical work](docs/REVIEW_RESPONSE_V015.md)
+- [Nano image selection, protocol and diagnostics](docs/NANO_V015_RESEARCH.md)
+- [Probe calibration and vertical rig](docs/PROBE_CALIBRATION.md)
 
 - [v0.14 bounded search, checkpoint return and surfacing](docs/NANO_V014_PROFILE_RETURN.md)
 - [Original proposal review and research comparison](docs/RESEARCH_ALIGNMENT_V013.md)

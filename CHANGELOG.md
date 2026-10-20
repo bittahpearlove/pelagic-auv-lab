@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.15 — forward-model research and reproducible evaluation
+
+- Separate forward sensor estimator, reliability gates and scalar speed governor; preserve legacy and add fixed-medium/ungated baselines.
+- Check impossible retrace feasibility before movement and label bounded partial inspection.
+- Add observation errors, distinct actual/assumed lag, immutable manifests, source/policy freeze, held-out scenarios, paired intervals and offline rescoring/figures.
+- Expose six strategies and estimator diagnostics in the lab. Report mixed results and detector failures.
+- Split classic Nano research/exploration images to fit flash; add capability handshake, external stamped profile packets, timing/stack instrumentation and fault checks.
+- Add calibration fitting/protocol, review disposition and real-hardware milestones. Simulated sensors and disabled motors remain.
+
 ## v0.14 — bounded exploration that resumes the profile
 
 - Limit the complete unvisited-water phase to 10 s; waypoint changes cannot restart it.
