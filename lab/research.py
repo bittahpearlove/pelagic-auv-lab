@@ -117,7 +117,7 @@ def run_comparison(core, params, config, budget_s=180, repeats=3, seed=20261020)
                                     common_depth_rmse_c=rmse(errors), transition_rmse_c=rmse(transition_errors),
                                     boundary_depth_error_m=error_depth, measured_crossings=len(measured_crossings),
                                     transition_fraction=sum(r['transition'] for r in selected)/len(selected) if selected else None))
-    return dict(schema=1, firmware='v0.13', allowance_s=budget_s, repeats=int(repeats), seed=seed,
+    return dict(schema=1, firmware='v0.14', allowance_s=budget_s, repeats=int(repeats), seed=seed,
                 params=p, controller_config=dict(config), reference_boundary_m=boundary,
                 reference='Ideal instantaneous simulator field at the probe; not an independent tank instrument',
                 design='One descent/hold/ascent per trial, equal maximum allowance; early finishes leave unused time. Three paired-noise repeats by default. No relocation or repeated cycles are hidden in the budget.',
