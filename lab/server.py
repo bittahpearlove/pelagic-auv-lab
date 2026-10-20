@@ -7,12 +7,14 @@ from collections import deque
 import ctypes
 import csv
 import io
+import importlib.util
 import json
 import math
 from pathlib import Path
 import random
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,6 +31,9 @@ LIMITS = dict(center=(0.2, 2.2), width=(0.03, 0.2), drop=(0, 6), tau=(0.1, 8), n
 
 CONFIG_KEYS = ['target_depth_m', 'max_depth_m', 'normal_speed_mps', 'slow_speed_mps', 'probe_tau_s', 'allowed_lag_m', 'gradient_window_m', 'gradient_enter_cpm', 'gradient_exit_cpm', 'control_ms', 'telemetry_ms', 'mission_timeout_ms', 'water_center_m', 'water_width_m', 'water_drop_c', 'water_surface_c', 'water_shape', 'profile_x_m']
 SHAPES = {'layer':0, 'tilted':1, 'front':2, 'patch':3, 'combined':4}
+_research_spec = importlib.util.spec_from_file_location('auv_research', ROOT/'research.py')
+research = importlib.util.module_from_spec(_research_spec)
+_research_spec.loader.exec_module(research)
 
 def select_serial_port(ports, explicit=None):
     """Select a USB adapter; the HELLO handshake subsequently verifies firmware."""
@@ -46,9 +51,13 @@ class Lab:
         self.serial_port_override=serial_port
         build = PROJECT / 'build/lab'
         build.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['c++', '-std=c++11', '-O2', '-Wall', '-Wextra', '-Werror', '-shared',
-                        '-fPIC', str(ROOT/'controller_bridge.cpp'), '-o', str(build/'core.so')], check=True)
-        self.core = ctypes.CDLL(str(build/'core.so'))
+        # Each instance gets a distinct inode. Never truncate a library already
+        # mapped by a running server, or reuse dlopen's cached path.
+        with tempfile.NamedTemporaryFile(dir=build, suffix='.so') as library:
+            subprocess.run(['c++', '-std=c++11', '-O2', '-Wall', '-Wextra', '-Werror', '-shared',
+                            '-fPIC', str(ROOT/'controller_bridge.cpp'), '-o', library.name], check=True)
+            self.core = ctypes.CDLL(library.name)
+        self.research_result = None
         self.core.lab_tick.argtypes = [ctypes.c_uint32, ctypes.c_float,
                                      ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
         values = (ctypes.c_float * len(CONFIG_KEYS))()
@@ -97,6 +106,9 @@ class Lab:
         self.events.appendleft(dict(time=round(self.ms/1000, 1), text=message))
 
     def reset(self):
+        if getattr(self, 'csv_log', None): self.csv_log.close()
+        self.csv_log = None
+        self.csv_path = None
         self.explore_last_worker=time.monotonic()
         self.exploring = False
         self.explore_pending = None
@@ -160,7 +172,7 @@ class Lab:
         self.error = ''
         self.event('USB open · requesting Nano firmware identity')
 
-    def exploration_params(self, body):
+    def exploration_params(self, body, quiet=True):
         updated=self.params.copy()
         for key,(low,high) in LIMITS.items():
             value=float(body.get(key,updated[key]))
@@ -168,13 +180,20 @@ class Lab:
             updated[key]=value
         shape=body.get('shape',updated['shape'])
         if shape not in SHAPES:raise ValueError('Unknown water shape')
-        updated['shape']=shape;updated['noise']=0
+        updated['shape']=shape
+        if quiet: updated['noise']=0
         return updated
 
     def action(self, body):
         with self.lock:
             action = body.get('action')
-            if action == 'source':
+            if action == 'research':
+                if self.running: raise ValueError('Stop the live run before comparing profiles')
+                params = self.exploration_params(body, quiet=False)
+                self.research_result = research.run_comparison(self.core, params, self.native_config)
+                research.save_comparison(self.research_result, PROJECT/'output/experiments/profile_comparison')
+                self.event('Equal-time vertical comparison saved; simulated reference, not tank validation')
+            elif action == 'source':
                 if body.get('value') not in ('offline', 'nano'): raise ValueError('Unknown source')
                 self.disconnect()
                 self.source = body['value']
@@ -196,8 +215,8 @@ class Lab:
                 self.event('Exploration water: '+updated['shape']+'; layer drop '+str(updated['drop'])+' C')
             elif action == 'explore_start':
                 if self.running: raise ValueError('Stop the current run first')
-                if self.source == 'nano' and (not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith('v0.12')):
-                    raise ValueError('Exploration needs Nano firmware v0.12, connected and verified')
+                if self.source == 'nano' and (not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith('v0.13')):
+                    raise ValueError('Exploration needs Nano firmware v0.13, connected and verified')
                 updated=self.exploration_params(body)
                 shape=updated['shape']
                 adaptive=body.get('adaptive',True)
@@ -220,7 +239,7 @@ class Lab:
                 x = float(body.get('profile_x', self.params['profile_x']))
                 if shape not in SHAPES or not math.isfinite(x) or not .5 <= x <= 7.5: raise ValueError('Invalid field selection')
                 if self.source == 'nano':
-                    if not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith(('v0.5','v0.6','v0.7','v0.12')): raise ValueError('Upload firmware v0.5 to select fields on Nano')
+                    if not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith(('v0.5','v0.6','v0.7','v0.13')): raise ValueError('Upload firmware v0.5 to select fields on Nano')
                     self.send(f'DISARM\nWATER{SHAPES[shape]}\nX{x:.3f}\nCONFIG\n'.encode('ascii'))
                 self.params.update(shape=shape, profile_x=x)
                 self.reset()
@@ -290,10 +309,22 @@ class Lab:
         row['seq'] = self.seq
         self.latest = row
         self.rows.append(row)
+        if self.csv_log is None:
+            directory = PROJECT/'output/runs'
+            directory.mkdir(parents=True, exist_ok=True)
+            self.csv_path = directory/(time.strftime('%Y%m%d-%H%M%S')+'-'+secrets.token_hex(4)+'.csv')
+            self.csv_log = self.csv_path.open('w', newline='')
+            self.csv_writer = csv.DictWriter(self.csv_log, fieldnames=FIELDS)
+            self.csv_writer.writeheader()
+        self.csv_writer.writerow(row)
+        if self.seq % 20 == 0 or row['state'] in (5, 6): self.csv_log.flush()
         key = (row['state'], row['transition'],row.get('explore_phase'))
         if key != self.previous_event:
             names = ['Disarmed', 'Arming', 'Descending', 'Depth hold', 'Ascending', 'Complete', 'Fault']
-            self.event(('Gradient following' if row.get('explore_phase')=='follow' else 'Slow upward retrace' if row.get('explore_phase')=='backtrack' else 'Local geometry probe' if row['transition'] else 'Vertical descent') if self.exploring and row['state']==2 else names[int(row['state'])] + (' · temperature transition' if row['transition'] else ''))
+            phases = {'transit':'Moving to unvisited water', 'monitor':'Hold (maximum 8 s)',
+                      'exhausted':'No unvisited target; awaiting Stop', 'backtrack':'Slow upward retrace',
+                      'probe':'Local geometry probe', 'descend':'Vertical descent'}
+            self.event(phases.get(row.get('explore_phase'),'Exploring') if self.exploring and row['state']==2 else names[int(row['state'])] + (' · temperature transition' if row['transition'] else ''))
             self.previous_event = key
         if row['state'] in (5, 6): self.running = False
 
@@ -319,7 +350,7 @@ class Lab:
         input_ms=self.ms
         active,local,reason,surge,heave,tx,tz,gx,gz,valid,visits,mission_phase,travel,local_exit,known_cells,rechecks=out
         self.explore_status=dict(active=bool(active),local=bool(local),reason=int(reason),target_x=tx,target_z=tz,
-            surge=surge,heave=heave,gx=gx,gz=gz,gradient_valid=bool(valid),visits=int(visits),mission_phase=int(mission_phase),travel=travel,local_exit=int(local_exit),known_cells=int(known_cells),rechecks=int(rechecks),phase={0:'vertical profiling',1:'slow upward retrace',2:'local geometry probe',3:'local gradient investigation',4:'complete',5:'hold (maximum 8 s)',6:'moving to unvisited water',7:'domain sampled; awaiting Stop'}[int(mission_phase)],policy='vertical',
+            surge=surge,heave=heave,gx=gx,gz=gz,gradient_valid=bool(valid),visits=int(visits),mission_phase=int(mission_phase),travel=travel,local_exit=int(local_exit),known_cells=int(known_cells),rechecks=int(rechecks),phase={0:'vertical profiling',1:'slow upward retrace',2:'local geometry probe',3:'local gradient investigation',4:'complete',5:'hold (maximum 8 s)',6:'moving to unvisited water',7:'no unvisited target; accuracy unknown; awaiting Stop'}[int(mission_phase)],policy='vertical',
             controller='Nano USB' if self.source=='nano' else 'Native C++',sequence=self.explore_sequence)
         # Freeze the plant if the controller has terminated; never reuse a stale request.
         if active:
@@ -338,7 +369,7 @@ class Lab:
         self.append([self.ms,state,0,self.explore_z,self.measured,self.truth,self.explore_vz,heave,tz,
             .10 if int(mission_phase) in (0,6) else min(.04,.08/self.params['tau']) if local==1 else min(.08,.1/self.params['tau']),0,0,int(bool(local)),0,12,0,0,self.explore_x,
             self.explore_x,surge,'complete' if not active else 'transit' if mission_phase==6 else 'exhausted' if mission_phase==7 else 'monitor' if mission_phase==5 else 'follow' if local==3 else 'probe' if local==2 else 'backtrack' if local==1 else 'descend',int(visits),gx,gz,int(valid),int(reason),
-            'nano_v0.12_lab_plant' if self.source=='nano' else 'native_v0.12_lab_plant',self.params['shape'],self.params['tau'],self.params['center'],self.params['width'],self.params['drop'],input_ms,*input_values,self.explore_vx,travel,int(local_exit),'vertical_then_local',int(known_cells),int(rechecks)])
+            'nano_v0.13_lab_plant' if self.source=='nano' else 'native_v0.13_lab_plant',self.params['shape'],self.params['tau'],self.params['center'],self.params['width'],self.params['drop'],input_ms,*input_values,self.explore_vx,travel,int(local_exit),'vertical_then_local',int(known_cells),int(rechecks)])
 
     def offline_tick(self):
         dt = 0.05
@@ -368,7 +399,7 @@ class Lab:
         now = time.monotonic()
         if not self.verified and self.connect_started:
             if now-self.connect_started > 8:
-                raise ValueError('USB opened but firmware handshake timed out. Expected AUV firmware v0.5; close other serial monitors and reconnect.')
+                raise ValueError('USB opened but firmware handshake timed out. Expected AUV firmware v0.13; close other serial monitors and reconnect.')
             if now-self.last_hello >= 0.75:
                 self.send(b'HELLO\n')
                 self.last_hello = now
@@ -377,7 +408,7 @@ class Lab:
             line, _, self.buffer = self.buffer.partition(b'\n')
             line = line.decode('ascii', errors='replace').strip()
             if line: self.log('NANO', line, 'telemetry' if line[:1].isdigit() or line.startswith('# EXP,') else 'message')
-            if line.startswith(('# AUV Nano adaptive v0.12;', '# AUV Nano adaptive v0.7;', '# AUV Nano adaptive v0.6;', '# AUV Nano adaptive v0.5;', '# AUV Nano adaptive v0.4;', '# AUV Nano adaptive v0.3;')):
+            if line.startswith(('# AUV Nano adaptive v0.13;', '# AUV Nano adaptive v0.7;', '# AUV Nano adaptive v0.6;', '# AUV Nano adaptive v0.5;', '# AUV Nano adaptive v0.4;', '# AUV Nano adaptive v0.3;')):
                 if '; simulated=1; motors=0' not in line:
                     raise ValueError('Nano must use simulated sensors and disabled motor outputs for this lab')
                 self.banner_seen = True
@@ -495,8 +526,18 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == '/api/comparison':
                 path=PROJECT/'output/experiments/exploration_comparison.json'
                 return self.response(json.loads(path.read_text()) if path.exists() else [])
+            if url.path == '/api/research':
+                with lab.lock:
+                    result = lab.research_result
+                    return self.response({k:v for k,v in result.items() if k!='rows'} if result else {})
+            if url.path == '/api/research.csv':
+                with lab.lock:
+                    return self.response(research.comparison_csv(lab.research_result).encode(), mime='text/csv')
             if url.path == '/api/export':
                 with lab.lock:
+                    if lab.csv_log:
+                        lab.csv_log.flush()
+                        return self.response(lab.csv_path.read_bytes(), mime='text/csv')
                     output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=FIELDS)
                     writer.writeheader(); writer.writerows(lab.rows)
                 return self.response(output.getvalue().encode(),mime='text/csv')
@@ -536,5 +577,7 @@ if __name__ == '__main__':
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally:
-        with lab.lock: lab.disconnect()
+        with lab.lock:
+            lab.disconnect()
+            if lab.csv_log: lab.csv_log.close()
         server.server_close()
