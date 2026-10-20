@@ -16,7 +16,7 @@ with lab.lock:
         lab.action(dict(action='source',value='nano'));lab.action(dict(action='connect'))
         deadline=time.monotonic()+10
         while not lab.verified and time.monotonic()<deadline:lab.serial_tick();time.sleep(.01)
-        assert lab.verified and lab.identity.startswith('v0.14'),lab.error or lab.identity
+        assert lab.verified and lab.identity.startswith('v0.15'),lab.error or lab.identity
         identity=lab.identity
         lab.action(dict(action='explore_start',shape='tilted',center=1.3,width=.1,drop=3,tau=2,noise=0,profile_x=4))
         lab.core.lab_explore_begin();lab.core.lab_explore_tau(ctypes.c_float(2))
@@ -64,7 +64,7 @@ with lab.lock:
                      observations=compared,local_rows=sum(r['transition'] for r in lab.rows),
                      gradient_rows=sum(r['gradient_2d_valid'] for r in lab.rows),
                      final=dict(lab.explore_status),parity_max_absolute_error=max_error,params=lab.params)
-        with (root/'output/logs/nano_v014_exploration.csv').open('w') as f:
+        with (root/'output/logs/nano_v015_exploration.csv').open('w') as f:
             w=csv.DictWriter(f,fieldnames=m.FIELDS);w.writeheader();w.writerows(lab.rows)
         lab.action(dict(action='explore_start',shape='layer',drop=0))
         lab.action(dict(action='stop'))
@@ -75,7 +75,7 @@ with lab.lock:
         summary['disarm_ack']=any(e['text']=='# disarmed' for e in lab.console)
         assert summary['disarm_ack']
     finally:
-        (root/'output/logs/nano_v014_console.log').write_text('\n'.join(str(e) for e in lab.console)+'\n')
+        (root/'output/logs/nano_v015_console.log').write_text('\n'.join(str(e) for e in lab.console)+'\n')
         lab.disconnect()
-        (root/'output/logs/nano_v014_verified.json').write_text(json.dumps(summary,indent=2)+'\n')
+        (root/'output/logs/nano_v015_verified.json').write_text(json.dumps(summary,indent=2)+'\n')
 print(json.dumps(summary,indent=2))

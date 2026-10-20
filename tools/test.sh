@@ -12,3 +12,7 @@ c++ -std=c++11 -Wall -Wextra -Werror -pedantic -I"$project_dir/tests/stubs" \
 c++ -std=c++11 -Wall -Wextra -Werror -pedantic \
   "$project_dir/tests/explorer_test.cpp" -o "$build_dir/explorer_test"
 "$build_dir/explorer_test"
+
+c++ -std=c++11 -Wall -Wextra -Werror -pedantic -I"$project_dir/firmware/auv_nano" \
+  "$project_dir/tests/thermal_estimator_test.cpp" -o "$build_dir/thermal_estimator_test"
+"$build_dir/thermal_estimator_test"
