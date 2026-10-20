@@ -44,3 +44,9 @@ body:not([data-activity="explore"]) #explore-comparison{display:none}
 #survey-controls,#example-survey,#survey-note,#survey-report{display:none!important}
 body[data-activity="explore"] #profile-x,body[data-activity="explore"] label[for="profile-x"]{display:block!important}
 body[data-activity="explore"] #profile-slice-note{display:none}
+
+/* A separate research view keeps the live workbench compact. */
+#research-panel{display:none;grid-column:1/-1;padding:20px;min-height:0;overflow:auto}
+body[data-view="research"] #research-panel{display:block}
+body[data-view="research"] .controls,body[data-view="research"] .tank-panel,body[data-view="research"] .analysis,body[data-view="research"] #thermal-mapping,body[data-view="research"] #lab-console{display:none!important}
+.research-table{overflow-x:auto;margin:18px 0}#research-panel table{width:100%;border-collapse:collapse;font-size:13px}#research-panel th,#research-panel td{padding:10px;text-align:right;border-bottom:1px solid #36515f}#research-panel th:first-child,#research-panel td:first-child{text-align:left}#research-panel details{margin-top:15px}#research-panel .hint{max-width:1000px}
