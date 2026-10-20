@@ -31,7 +31,14 @@ int main() {
   a.observe(0.18f, 21, 5, 1); a.observe(0.24f, 21, 6, 1);
   assert(a.transition);
   a.observe(0.30f, 21, 7, 1); assert(!a.transition);
+  assert(a.regionValid);
+  const float learnedLow = a.regionLow, learnedHigh = a.regionHigh;
+  a.reset(true); // The ascent gets new acquisition history, but retains the band.
+  assert(!a.gradientValid && !a.transition && a.regionValid);
+  assert(a.speed(ProfileMode::Adaptive, (learnedLow+learnedHigh)/2) <= Config::SLOW_SPEED_MPS);
+  assert(a.speed(ProfileMode::Fast, (learnedLow+learnedHigh)/2) == Config::TARGET_SPEED_MPS);
   a.reset(); assert(!a.gradientValid && !a.transition);
+  assert(!a.regionValid); // A new mission cannot inherit an old water column.
   a.observe(1, 19, 10, -1); a.observe(0.94f, 19.5f, 11, -1);
   a.observe(0.88f, 20, 12, -1); assert(a.transition);
   // Flat/noisy stationary readings cannot manufacture a transition.
