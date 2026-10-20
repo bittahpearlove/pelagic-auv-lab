@@ -215,8 +215,8 @@ class Lab:
                 self.event('Exploration water: '+updated['shape']+'; layer drop '+str(updated['drop'])+' C')
             elif action == 'explore_start':
                 if self.running: raise ValueError('Stop the current run first')
-                if self.source == 'nano' and (not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith('v0.13')):
-                    raise ValueError('Exploration needs Nano firmware v0.13, connected and verified')
+                if self.source == 'nano' and (not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith('v0.14')):
+                    raise ValueError('Exploration needs Nano firmware v0.14, connected and verified')
                 updated=self.exploration_params(body)
                 shape=updated['shape']
                 adaptive=body.get('adaptive',True)
@@ -239,7 +239,7 @@ class Lab:
                 x = float(body.get('profile_x', self.params['profile_x']))
                 if shape not in SHAPES or not math.isfinite(x) or not .5 <= x <= 7.5: raise ValueError('Invalid field selection')
                 if self.source == 'nano':
-                    if not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith(('v0.5','v0.6','v0.7','v0.13')): raise ValueError('Upload firmware v0.5 to select fields on Nano')
+                    if not self.verified or time.monotonic()-self.last_rx>2 or not self.identity.startswith(('v0.5','v0.6','v0.7','v0.14')): raise ValueError('Upload firmware v0.5 to select fields on Nano')
                     self.send(f'DISARM\nWATER{SHAPES[shape]}\nX{x:.3f}\nCONFIG\n'.encode('ascii'))
                 self.params.update(shape=shape, profile_x=x)
                 self.reset()
@@ -321,7 +321,7 @@ class Lab:
         key = (row['state'], row['transition'],row.get('explore_phase'))
         if key != self.previous_event:
             names = ['Disarmed', 'Arming', 'Descending', 'Depth hold', 'Ascending', 'Complete', 'Fault']
-            phases = {'transit':'Moving to unvisited water', 'monitor':'Hold (maximum 8 s)',
+            phases = {'transit':'Moving to unvisited water', 'monitor':'Hold (maximum 8 s)', 'return':'Returning to descent checkpoint', 'ascend':'Returning to surface',
                       'exhausted':'No unvisited target; awaiting Stop', 'backtrack':'Slow upward retrace',
                       'probe':'Local geometry probe', 'descend':'Vertical descent'}
             self.event(phases.get(row.get('explore_phase'),'Exploring') if self.exploring and row['state']==2 else names[int(row['state'])] + (' · temperature transition' if row['transition'] else ''))
@@ -350,7 +350,7 @@ class Lab:
         input_ms=self.ms
         active,local,reason,surge,heave,tx,tz,gx,gz,valid,visits,mission_phase,travel,local_exit,known_cells,rechecks=out
         self.explore_status=dict(active=bool(active),local=bool(local),reason=int(reason),target_x=tx,target_z=tz,
-            surge=surge,heave=heave,gx=gx,gz=gz,gradient_valid=bool(valid),visits=int(visits),mission_phase=int(mission_phase),travel=travel,local_exit=int(local_exit),known_cells=int(known_cells),rechecks=int(rechecks),phase={0:'vertical profiling',1:'slow upward retrace',2:'local geometry probe',3:'local gradient investigation',4:'complete',5:'hold (maximum 8 s)',6:'moving to unvisited water',7:'no unvisited target; accuracy unknown; awaiting Stop'}[int(mission_phase)],policy='vertical',
+            surge=surge,heave=heave,gx=gx,gz=gz,gradient_valid=bool(valid),visits=int(visits),mission_phase=int(mission_phase),travel=travel,local_exit=int(local_exit),known_cells=int(known_cells),rechecks=int(rechecks),phase={0:'vertical profiling',1:'slow upward retrace',2:'local geometry probe',3:'local gradient investigation',4:'complete',5:'hold (maximum 8 s)',6:'moving to unvisited water',7:'no unvisited target',8:'returning to descent checkpoint',9:'returning to surface'}[int(mission_phase)],policy='vertical',
             controller='Nano USB' if self.source=='nano' else 'Native C++',sequence=self.explore_sequence)
         # Freeze the plant if the controller has terminated; never reuse a stale request.
         if active:
@@ -367,9 +367,9 @@ class Lab:
         else:surge=heave=0
         state=2 if active else (5 if int(reason) in (1,2) else 6)
         self.append([self.ms,state,0,self.explore_z,self.measured,self.truth,self.explore_vz,heave,tz,
-            .10 if int(mission_phase) in (0,6) else min(.04,.08/self.params['tau']) if local==1 else min(.08,.1/self.params['tau']),0,0,int(bool(local)),0,12,0,0,self.explore_x,
-            self.explore_x,surge,'complete' if not active else 'transit' if mission_phase==6 else 'exhausted' if mission_phase==7 else 'monitor' if mission_phase==5 else 'follow' if local==3 else 'probe' if local==2 else 'backtrack' if local==1 else 'descend',int(visits),gx,gz,int(valid),int(reason),
-            'nano_v0.13_lab_plant' if self.source=='nano' else 'native_v0.13_lab_plant',self.params['shape'],self.params['tau'],self.params['center'],self.params['width'],self.params['drop'],input_ms,*input_values,self.explore_vx,travel,int(local_exit),'vertical_then_local',int(known_cells),int(rechecks)])
+            .10 if int(mission_phase) in (0,6,8,9) else min(.04,.08/self.params['tau']) if local==1 else min(.08,.1/self.params['tau']),0,0,int(bool(local)),0,12,0,0,self.explore_x,
+            self.explore_x,surge,'complete' if not active else 'transit' if mission_phase==6 else 'return' if mission_phase==8 else 'ascend' if mission_phase==9 else 'exhausted' if mission_phase==7 else 'monitor' if mission_phase==5 else 'follow' if local==3 else 'probe' if local==2 else 'backtrack' if local==1 else 'descend',int(visits),gx,gz,int(valid),int(reason),
+            'nano_v0.14_lab_plant' if self.source=='nano' else 'native_v0.14_lab_plant',self.params['shape'],self.params['tau'],self.params['center'],self.params['width'],self.params['drop'],input_ms,*input_values,self.explore_vx,travel,int(local_exit),'vertical_then_local',int(known_cells),int(rechecks)])
 
     def offline_tick(self):
         dt = 0.05
@@ -399,7 +399,7 @@ class Lab:
         now = time.monotonic()
         if not self.verified and self.connect_started:
             if now-self.connect_started > 8:
-                raise ValueError('USB opened but firmware handshake timed out. Expected AUV firmware v0.13; close other serial monitors and reconnect.')
+                raise ValueError('USB opened but firmware handshake timed out. Expected AUV firmware v0.14; close other serial monitors and reconnect.')
             if now-self.last_hello >= 0.75:
                 self.send(b'HELLO\n')
                 self.last_hello = now
@@ -408,7 +408,7 @@ class Lab:
             line, _, self.buffer = self.buffer.partition(b'\n')
             line = line.decode('ascii', errors='replace').strip()
             if line: self.log('NANO', line, 'telemetry' if line[:1].isdigit() or line.startswith('# EXP,') else 'message')
-            if line.startswith(('# AUV Nano adaptive v0.13;', '# AUV Nano adaptive v0.7;', '# AUV Nano adaptive v0.6;', '# AUV Nano adaptive v0.5;', '# AUV Nano adaptive v0.4;', '# AUV Nano adaptive v0.3;')):
+            if line.startswith(('# AUV Nano adaptive v0.14;', '# AUV Nano adaptive v0.7;', '# AUV Nano adaptive v0.6;', '# AUV Nano adaptive v0.5;', '# AUV Nano adaptive v0.4;', '# AUV Nano adaptive v0.3;')):
                 if '; simulated=1; motors=0' not in line:
                     raise ValueError('Nano must use simulated sensors and disabled motor outputs for this lab')
                 self.banner_seen = True
@@ -417,10 +417,15 @@ class Lab:
                 self.banner_seen = True
                 self.identity = 'v0.2 · legacy startup handshake'
             if line.startswith('# CONFIG,') and getattr(self, 'banner_seen', False):
-                pairs = dict(part.split('=', 1) for part in line[9:].split(','))
+                parts = line[9:].split(',')
+                pairs = dict(part.split('=', 1) for part in parts) if all('=' in part for part in parts) else {}
                 expected = set(CONFIG_KEYS)
                 legacy = expected - {'water_shape', 'profile_x_m'}
-                if set(pairs) != expected and not (self.identity.startswith('v0.4') and set(pairs) == legacy): raise ValueError('Incomplete firmware configuration')
+                if set(pairs) != expected and not (self.identity.startswith('v0.4') and set(pairs) == legacy):
+                    if self.verified: raise ValueError('Incomplete firmware configuration')
+                    self.firmware_config = {}
+                    self.log('BRIDGE', 'Incomplete startup CONFIG; awaiting a complete HELLO reply')
+                    continue
                 parsed = {key: float(value) for key,value in pairs.items()}
                 if not all(math.isfinite(v) and 0 <= v < 1e7 for v in parsed.values()):
                     raise ValueError('Invalid firmware configuration')
@@ -437,8 +442,8 @@ class Lab:
                 values=[float(v) for v in parts]
                 if not all(math.isfinite(v) for v in values):raise ValueError('Invalid exploration numbers')
                 sequence=int(values[0]);out=values[1:]
-                if out[0] not in (0,1) or out[1] not in (0,1,2,3,5) or not 0<=out[2]<=5 or abs(out[3])>1 or abs(out[4])>1 or not .39<=out[5]<=7.61 or not .19<=out[6]<=2.71:raise ValueError('Invalid exploration motion request')
-                if out[11] not in (0,1,2,3,4,5,6,7) or not 0<=out[14]<=1536 or not 0<=out[15]<=65535:raise ValueError('Invalid exploration memory status')
+                if out[0] not in (0,1) or out[1] not in (0,1,2,3,5) or not 0<=out[2]<=6 or abs(out[3])>1 or abs(out[4])>1 or not .39<=out[5]<=7.61 or not .09<=out[6]<=2.71:raise ValueError('Invalid exploration motion request')
+                if out[11] not in (0,1,2,3,4,5,6,7,8,9) or not 0<=out[14]<=1536 or not 0<=out[15]<=65535:raise ValueError('Invalid exploration memory status')
                 if self.exploring and sequence==0 and not out[0]:raise ValueError('Nano stopped exploration: observation link timeout')
                 if self.exploring and sequence==self.explore_pending:self.explore_reply=out
             if line[:1].isdigit() and self.header:
@@ -447,6 +452,7 @@ class Lab:
                 r = dict(zip(self.header, vals))
                 if r['simulated'] != '1': raise ValueError('Lab accepts simulated firmware only')
                 if not getattr(self, 'banner_seen', False): continue
+                if not self.identity.startswith('v0.2') and not self.firmware_config: continue
                 if not self.verified: self.event('Nano verified · live USB telemetry')
                 self.verified = True
                 self.last_rx = time.monotonic()
