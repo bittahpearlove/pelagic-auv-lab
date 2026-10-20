@@ -4,6 +4,27 @@ permissions:
   contents: read
 jobs:
   offline:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: bash tools/test.sh
+      - run: python tests/lab_test.py
+      - run: node tests/keyboard_test.mjs
+      - run: node tests/demo_model_test.mjs
+      - run: node tests/thermal_map_test.mjs
+      - run: node tests/survey_planner_test.mjs
+name: Tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  offline:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
