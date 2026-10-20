@@ -57,11 +57,13 @@ class LabTests(unittest.TestCase):
         result=module.research.run_comparison(lab.core, lab.params, lab.native_config, repeats=1)
         repeated=module.research.run_comparison(lab.core, lab.params, lab.native_config, repeats=1)
         self.assertEqual(result,repeated)
-        self.assertEqual(len(result['trials']),3)
+        self.assertEqual(len(result['trials']),6)
         self.assertTrue(all(t['complete'] and t['allowance_s']==180 for t in result['trials']))
         self.assertAlmostEqual(result['reference_boundary_m'],.5,places=3)
         self.assertEqual({r['direction'] for r in result['metrics']},{'descent','ascent'})
-        self.assertTrue(all(r['common_bins']>30 for r in result['metrics']))
+        self.assertTrue(all(r['total_bins']==32 for r in result['metrics']))
+        self.assertTrue(all(r['occupied_bins']==32 for r in result['metrics'] if r['reconstruction']=='raw'))
+        self.assertTrue(any(r['full_profile_rmse_c'] is None for r in result['metrics'] if r['reconstruction']=='forward'))
         self.assertTrue(all(r['boundary_depth_error_m'] is not None for r in result['metrics']))
         self.assertEqual({r['actual_tau_s'] for r in result['rows']},{2})
         self.assertTrue(any(r['region_valid'] for r in result['rows'] if r['mode']=='adaptive'))
@@ -70,7 +72,7 @@ class LabTests(unittest.TestCase):
         self.assertTrue(all(r['boundary_depth_error_m'] is None for r in flat['metrics']))
         self.assertTrue(all(r['transition']==0 for r in flat['rows']))
         short=module.research.run_comparison(lab.core,lab.params,lab.native_config,budget_s=10,repeats=1)
-        self.assertTrue(all(t['censored'] and t['elapsed_s']==10 for t in short['trials']))
+        self.assertTrue(all(not t['full_profile_complete'] and t['elapsed_s']<=10 for t in short['trials']))
 
     def test_full_csv_survives_the_live_history_limit(self):
         lab=self.lab
@@ -315,8 +317,8 @@ class LabTests(unittest.TestCase):
             def close(self):pass
         link=Link();lab.serial=link;lab.source='nano';lab.verified=True;lab.last_rx=module.time.monotonic();lab.identity='v0.5'
         try:
-            with self.assertRaisesRegex(ValueError,'v0.14'):lab.action(dict(action='explore_start'))
-            lab.identity='v0.14';lab.action(dict(action='explore_start',shape='patch',drop=0))
+            with self.assertRaisesRegex(ValueError,'v0.15'):lab.action(dict(action='explore_start'))
+            lab.identity='v0.15';lab.action(dict(action='explore_start',shape='patch',drop=0))
             self.assertEqual(link.writes[0],b'DISARM\nEXPL,1,2.000\n')
             lab.exploration_tick();sequence=lab.explore_pending
             packet=link.writes[-1].decode().strip().split(',')

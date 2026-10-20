@@ -15,7 +15,7 @@ int main() {
   assert(verticalEsc.attached == -1 && leftEsc.attached == -1 && rightEsc.attached == -1);
   Serial.output.clear();
   send("HELLO\n");
-  assert(Serial.output.find("# AUV Nano adaptive v0.14; simulated=1; motors=0") != std::string::npos);
+  assert(Serial.output.find("# AUV Nano adaptive v0.15; simulated=1; motors=0") != std::string::npos);
   assert(Serial.output.find("# CONFIG,target_depth_m=") != std::string::npos);
   assert(Serial.output.find(",probe_tau_s=2") != std::string::npos);
   assert(Serial.output.find("ms,sample_ms,") != std::string::npos);
@@ -70,5 +70,24 @@ int main() {
   send("OBS,1,4,2,0.35,0,0,22\n");loop();assert(explorer.active);
   send("OBS,2,4294967296,2,0.35,0,0,22\n");loop();assert(!explorer.active&&explorer.reason==3);
   assert(verticalEsc.attached == -1 && leftEsc.attached == -1 && rightEsc.attached == -1);
+  send("DISARM\n");send("CAL,2,2.5,0.1,0.005\n");
+  send("PROF,4,2,2.5,0.1,0.005,180000\n");loop();
+  assert(profileExternal && controller.state==State::Ready);
+  for(uint32_t n=1;n<=102;n++) {
+    const std::string packet="P,"+std::to_string(n)+","+std::to_string(n*50)+","+std::to_string(n*50)+",0,0,22,1\n";
+    send(packet.c_str());loop();
+  }
+  assert(controller.state==State::Descend);
+  send("P,102,5150,5150,0,0,22,1\n");loop();
+  assert(controller.state==State::Fault && (controller.faults&INVALID_SENSOR));
+  send("DISARM\n");send("PROF,4,2,2.5,0.1,0.005,180000\n");loop();
+  send("P,1,50,50,0,0,22,3\n");loop();
+  assert(controller.state==State::Fault && (controller.faults&LEAK));
+  send("DISARM\n");send("PROF,4,2,2.5,0.1,0.005,180000\n");loop();
+  send("P,1,1000,0,0,0,22,1\n");loop();
+  assert(controller.state==State::Fault && (controller.faults&STALE_SENSOR));
+  send("DISARM\n");send("PROF,4,2,2.5,0.1,0.005,180000\n");loop();
+  tick(fakeMs+1001);assert(controller.state==State::Fault && !profileExternal);
+  assert(verticalEsc.attached==-1);
   std::cout << "PASS: sketch commands, ESC disabled, immediate interlocks, overflow rejection\n";
 }
