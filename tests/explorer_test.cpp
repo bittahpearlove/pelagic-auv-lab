@@ -3,7 +3,7 @@
 #include <iostream>
 #include <set>
 #include "../firmware/auv_nano/Explorer.h"
-struct Run {float travel;int known,local,transits;};
+struct Run {float travel;int known,local,transits,visits;};
 static int cell(float x,float z){return int(z*8)*64+int(x*8);}
 Run simulate(bool layer,float tau=2){
  Explorer c;c.begin();c.tau=tau;
@@ -14,6 +14,13 @@ Run simulate(bool layer,float tau=2){
   observed.insert(cell(x,z));c.update({x,z,vx,vz,t,ms});
   assert(c.active&&c.reason==0&&c.knownCells>=previousKnown);previousKnown=c.knownCells;
   assert(isfinite(c.surge)&&isfinite(c.heave)&&fabsf(c.surge)<=1&&fabsf(c.heave)<=1);
+  // Undo the unsaturated velocity PD to check the requested vector rate.
+  if(fabsf(c.surge)<.999f&&fabsf(c.heave)<.999f){
+   const float requestX=(.8f*c.surge+2*vx)/3.4f;
+   const float requestZ=(.6f*c.heave-.018f+2*vz)/3.8f;
+   const float limit=(c.phase==Explorer::Descend||c.phase==Explorer::Transit)?.10f:c.phase==Explorer::Backtrack?fminf(.04f,.08f/tau):fminf(.08f,.10f/tau);
+   assert(hypotf(requestX,requestZ)<=limit+.00001f);
+  }
   if(c.phase!=previousPhase){phaseSince=ms;previousPhase=c.phase;}
   if(c.local||c.phase==Explorer::Monitor)assert(ms-phaseSince<=8000);
   if(c.local){if(!wasLocal)localSince=ms;assert(ms-localSince<=8000);localRows++;}
@@ -31,11 +38,12 @@ Run simulate(bool layer,float tau=2){
  }
  assert(transits>10&&c.knownCells>40);
  c.stop(4);assert(!c.active&&c.phase==Explorer::Finished&&c.surge==0&&c.heave==0);
- return {c.distance,c.knownCells,localRows,transits};
+ return {c.distance,c.knownCells,localRows,transits,c.visits};
 }
 int main(){
  const auto flat=simulate(false),layer=simulate(true),slow=simulate(true,8);
  assert(flat.local==0&&layer.local>0&&slow.local>0);
+ assert(layer.visits>1); // Short frontier hops still accumulate gradient evidence.
  Explorer invalid;invalid.begin();invalid.update({NAN,1,0,0,22,0});assert(!invalid.active&&invalid.reason==3);
  invalid.begin();invalid.update({4,.2f,0,0,22,0});invalid.update({4,.2f,0,0,22,0});assert(!invalid.active&&invalid.reason==3);
  Explorer clock;clock.begin();clock.update({4,.2f,0,0,22,4294967200UL});clock.update({4,.2f,0,0,22,4});assert(clock.active);
