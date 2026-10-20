@@ -1,5 +1,7 @@
 # Nano v0.14: bounded detours, resume descent, then surface
 
+Historical v0.14 behavior. See [v0.15 model and image changes](NANO_V015_RESEARCH.md) and [current research methods](RESEARCH_V015.md). The short upward motion is now explicitly a partial inspection because full retrace is infeasible.
+
 The v0.13 frontier search could keep selecting another unvisited target forever. Its waypoint changes restarted phase bookkeeping, and no transition restored the original descent mission. This was a route design bug, not a lack of temperature measurements.
 
 The current route is:

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "selection_split": "development",
+  "source_sha256": {
+    "firmware/auv_nano/Adaptive.h": "f7715f86197b6557deb7cdccd0ad77a0ddd7c5411f746f221f6238798cdde04d",
+    "firmware/auv_nano/Build.h": "e53200f9d8cc816410f2ffbe8d261bf869bfe61684660b6cc5ca2e674695ca68",
+    "firmware/auv_nano/Config.h": "c74d21f8a5d87d0a95cfbf8bcea2a862d79a42281a1171617ba62a65d6d6a2cc",
+    "firmware/auv_nano/Controller.h": "21449b73fcbb0be186e9e217c81dda8a3a2f8f404bd3c231bf8de0b340f56520",
+    "firmware/auv_nano/Diagnostics.h": "01ce4f87b28b9874313d531fa4758c78d6c477503bda47cf0d28f8cca4072982",
+    "firmware/auv_nano/Explorer.h": "1b00555ddeda5a114534116527fb0662c271a3c537d5fd173ff7456ce46c607e",
+    "firmware/auv_nano/ProbeModel.h": "35fba8e10492332da35dca40f0e47de779498dc8e11634b081ed237f56be4412",
+    "firmware/auv_nano/ReportedConfig.h": "9df453b8fab572c201f5409271e9e32fd03ab77a1aa6a30b648d0ae1203e818b",
+    "firmware/auv_nano/SamplingPolicy.h": "04ce40d16fa22180a6fcc2e6ffe5fe6d38a990314a5809ffecb76321b0c42b64",
+    "firmware/auv_nano/Sensors.h": "e202e4bcca03098f36c6a9f0777a9fcc87775c65e9ca8f5d433cf0094de72293",
+    "firmware/auv_nano/ThermalEstimator.h": "ecb65b737a4538b6ec33d0ecaa089738d3a2facee2b328ae93737c010d1e9702",
+    "firmware/auv_nano/ThermalField.h": "3d17dfc68fe908db7f90a248cd74b9cd432eba8da6df1ce34c3ad2704e6a0dfe",
+    "firmware/auv_nano/auv_nano.ino": "c9a60fa9819ce38d481feb55fc2c4687bd777e6ce8c221b6536443ab32734d1e",
+    "lab/research.py": "3ade3090db8600a1cc90daea6739212d4e8e6105d2276c77d262f9715de29756",
+    "lab/scenarios.py": "cff04e039f524855d0428d9c3381a52ba94aaccb2d32a1bb632ec049f5e6197b",
+    "lab/evaluation.py": "4b3bf13315275f54f34ead0eddbb4340c429044193ff88716d57920c5590efd7",
+    "lab/controller_bridge.cpp": "e6997bf4f80c2a9dbeeea9e2a6bd73ecf5107ec6e3b7c4ffaf587879ad669db5"
+  },
+  "settings": {
+    "tau_nominal_s": 2.0,
+    "tau_max_s": 2.5,
+    "epsilon_c": 0.1,
+    "noise_assumed_c": 0.005,
+    "primary_baseline": "medium",
+    "gradient_threshold_cpm": 2.0,
+    "bin_m": 0.025,
+    "required_depth_range_m": [
+      0.1,
+      0.9
+    ],
+    "boundary_search_m": [
+      0.2,
+      0.8
+    ]
+  },
+  "sha256": "710d0ec38677d476aaab27ca16d69afc0c7e6d429867244eff6d0597a3296df9"
+}
