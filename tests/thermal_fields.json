@@ -1,0 +1,182 @@
+[
+  {
+    "x": 0.5,
+    "z": 0.1,
+    "shape": "layer",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 21.999967359934463
+  },
+  {
+    "x": 4,
+    "z": 0.5,
+    "shape": "layer",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 20.5
+  },
+  {
+    "x": 5.3,
+    "z": 0.85,
+    "shape": "layer",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.000136193606107
+  },
+  {
+    "x": 7.5,
+    "z": 1.2,
+    "shape": "layer",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.000000006183463
+  },
+  {
+    "x": 0.5,
+    "z": 0.1,
+    "shape": "tilted",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.0307118614873
+  },
+  {
+    "x": 4,
+    "z": 0.5,
+    "shape": "tilted",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 20.5
+  },
+  {
+    "x": 5.3,
+    "z": 0.85,
+    "shape": "tilted",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.051012681134683
+  },
+  {
+    "x": 7.5,
+    "z": 1.2,
+    "shape": "tilted",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.053958629886274
+  },
+  {
+    "x": 0.5,
+    "z": 0.1,
+    "shape": "front",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 21.999999993816537
+  },
+  {
+    "x": 4,
+    "z": 0.5,
+    "shape": "front",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 20.5
+  },
+  {
+    "x": 5.3,
+    "z": 0.85,
+    "shape": "front",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.00178104857853
+  },
+  {
+    "x": 7.5,
+    "z": 1.2,
+    "shape": "front",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.000000006183463
+  },
+  {
+    "x": 0.5,
+    "z": 0.1,
+    "shape": "patch",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 21.999967360046536
+  },
+  {
+    "x": 4,
+    "z": 0.5,
+    "shape": "patch",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 20.72545592420431
+  },
+  {
+    "x": 5.3,
+    "z": 0.85,
+    "shape": "patch",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 21.000136193606107
+  },
+  {
+    "x": 7.5,
+    "z": 1.2,
+    "shape": "patch",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.013709995053553
+  },
+  {
+    "x": 0.5,
+    "z": 0.1,
+    "shape": "combined",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.030711861599375
+  },
+  {
+    "x": 4,
+    "z": 0.5,
+    "shape": "combined",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 20.72545592420431
+  },
+  {
+    "x": 5.3,
+    "z": 0.85,
+    "shape": "combined",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 21.051012681134683
+  },
+  {
+    "x": 7.5,
+    "z": 1.2,
+    "shape": "combined",
+    "center": 0.5,
+    "width": 0.07,
+    "drop": 3,
+    "temperature": 19.067668618756365
+  }
+]
