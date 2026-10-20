@@ -168,6 +168,12 @@ class LabTests(unittest.TestCase):
             lab.serial_tick()
             self.assertEqual(lab.firmware_config['probe_tau_s'],3.25)
             self.assertEqual(lab.snapshot(0)['firmware_config'], {}) # Not verified by a sample yet.
+            lab.serial=ConfigSerial('# CONFIG,probe_tau_s=2.0,broken\n')
+            lab.serial_tick()
+            self.assertFalse(lab.verified)
+            self.assertEqual(lab.firmware_config,{})
+            lab.serial=ConfigSerial(packet);lab.serial_tick()
+            self.assertEqual(lab.firmware_config['probe_tau_s'],3.25)
             lab.verified=True
             self.assertEqual(lab.snapshot(0)['firmware_config']['probe_tau_s'],3.25)
             lab.serial=ConfigSerial('# CONFIG,probe_tau_s=nan\n')
@@ -257,40 +263,43 @@ class LabTests(unittest.TestCase):
     def test_native_exploration_and_two_way_measurement_contract(self):
         lab=self.lab
         lab.action(dict(action='explore_start',shape='tilted',drop=3,center=1.3))
-        for _ in range(6100):lab.exploration_tick()
-        self.assertTrue(lab.running);self.assertTrue(lab.explore_status['active'])
-        self.assertEqual(lab.explore_status['reason'],0)
+        for _ in range(6000):
+            if not lab.running:break
+            lab.exploration_tick()
+        self.assertFalse(lab.running);self.assertFalse(lab.explore_status['active'])
+        self.assertEqual(lab.explore_status['reason'],1)
+        self.assertLess(lab.latest['depth_m'],.14)
         self.assertGreater(lab.explore_status['visits'],0)
         self.assertTrue(any(r['gradient_2d_valid'] for r in lab.rows))
-        self.assertGreater(lab.ms,600000)
-        self.assertIn(lab.explore_status['mission_phase'],(0,1,2,5,6,7))
-        self.assertTrue(any(r['explore_phase']=='transit' for r in lab.rows))
-        self.assertEqual(lab.explore_status['rechecks'],0)
-        self.assertGreater(lab.explore_status['known_cells'],0)
+        self.assertLess(lab.ms,600000)
         self.assertTrue(all(a['known_cells']<=b['known_cells'] for a,b in zip(lab.rows,list(lab.rows)[1:])))
-        tail=[r for r in lab.rows if r['ms']>510000]
-        self.assertGreater(tail[-1]['known_cells'],tail[0]['known_cells'])
-        for phase in ('backtrack','probe','monitor'):
+        for phase in ('backtrack','probe','transit'):
             start=None
             for row in lab.rows:
                 if row['explore_phase']!=phase:start=None
                 elif start is None:start=row['input_ms']
-                else:self.assertLessEqual(row['input_ms']-start,8000)
-        self.assertTrue(all(abs(r['x_m']-4)<.002 for r in lab.rows if r['explore_phase'] in ('descend','backtrack')))
-        self.assertTrue(any(r['explore_phase'] in ('backtrack','probe','follow') for r in lab.rows))
+                else:self.assertLessEqual(row['input_ms']-start,10000 if phase=='transit' else 8000)
+        phases=[r['explore_phase'] for r in lab.rows]
+        self.assertIn('return',phases);self.assertIn('ascend',phases)
+        last_return=max(i for i,p in enumerate(phases) if p=='return')
+        self.assertIn('descend',phases[last_return+1:])
+        self.assertTrue(all(abs(r['x_m']-4)<.04 for r in lab.rows if r['explore_phase']=='descend'))
         self.assertTrue(all(.2<=r['x_m']<=7.8 and .08<=r['depth_m']<=2.85 for r in lab.rows))
+        self.assertEqual(lab.latest['command'],0);self.assertEqual(lab.latest['surge'],0)
+        self.assertEqual(lab.latest['speed_limit_mps'],0)
         self.assertEqual(lab.snapshot(0)['exploration']['controller'],'Native C++')
         lab.reset();lab.action(dict(action='explore_start',shape='layer',drop=0))
-        for _ in range(6100):lab.exploration_tick()
+        for _ in range(2000):
+            if not lab.running:break
+            lab.exploration_tick()
         self.assertEqual(lab.explore_status['visits'],0)
-        self.assertTrue(lab.running)
+        self.assertFalse(lab.running);self.assertEqual(lab.explore_status['reason'],1)
+        self.assertLess(lab.latest['depth_m'],.14)
+        self.assertFalse(any(r['explore_phase']=='transit' for r in lab.rows))
+        lab.reset();lab.action(dict(action='explore_start'));lab.exploration_tick()
         lab.action(dict(action='stop'))
-        self.assertFalse(lab.running)
-        self.assertFalse(lab.explore_status['active'])
-        self.assertEqual(lab.explore_status['reason'],4)
+        self.assertFalse(lab.running);self.assertEqual(lab.explore_status['reason'],4)
         self.assertEqual(lab.latest['command'],0)
-        self.assertTrue(all(abs(r['x_m']-4)<.001 for r in lab.rows if r['explore_phase']=='descend'))
-        self.assertTrue(any(r['explore_phase']=='transit' for r in lab.rows))
         lab.reset()
         with self.assertRaisesRegex(ValueError,'Sweep policies removed'):lab.action(dict(action='explore_start',adaptive=False))
 
@@ -306,8 +315,8 @@ class LabTests(unittest.TestCase):
             def close(self):pass
         link=Link();lab.serial=link;lab.source='nano';lab.verified=True;lab.last_rx=module.time.monotonic();lab.identity='v0.5'
         try:
-            with self.assertRaisesRegex(ValueError,'v0.13'):lab.action(dict(action='explore_start'))
-            lab.identity='v0.13';lab.action(dict(action='explore_start',shape='patch',drop=0))
+            with self.assertRaisesRegex(ValueError,'v0.14'):lab.action(dict(action='explore_start'))
+            lab.identity='v0.14';lab.action(dict(action='explore_start',shape='patch',drop=0))
             self.assertEqual(link.writes[0],b'DISARM\nEXPL,1,2.000\n')
             lab.exploration_tick();sequence=lab.explore_pending
             packet=link.writes[-1].decode().strip().split(',')
