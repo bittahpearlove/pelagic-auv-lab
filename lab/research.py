@@ -1,144 +1,174 @@
-"""Reproducible vertical-profile trials using the production C++ controller.
-The reference is ideal simulator water. It never enters the controller inputs.
-"""
-from collections import defaultdict
-import ctypes
+"""Production Nano algorithm in reproducible, truth-separated vertical trials."""
 import csv
+import ctypes
+import hashlib
+import importlib.util
 import io
 import json
 import math
 from pathlib import Path
-import random
-
-MODES = ('adaptive', 'fast', 'slow')
-SHAPES = {'layer': 0, 'tilted': 1, 'front': 2, 'patch': 3, 'combined': 4}
-BIN_M = .025
+import time
 
 
-def run_comparison(core, params, config, budget_s=180, repeats=3, seed=20261020):
-    if not 10 <= budget_s <= 600 or int(repeats) != repeats or not 1 <= repeats <= 10:
-        raise ValueError('Trial allowance must be 10–600 s; repeats 1–10')
-    core.lab_trial_tick.argtypes = [ctypes.c_uint32, ctypes.c_float,
-                                    ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
-    p = dict(params)
-    def water(z):
-        return float(core.lab_water(p['profile_x'], z, SHAPES[p['shape']], p['center'], p['width'], p['drop']))
-    # One consistently defined boundary: unique mid-drop isotherm in this column.
-    # A lateral front, uniform water or multiple crossings has no such metric.
-    midpoint = config['water_surface_c'] - p['drop'] / 2
-    crossings = []
-    if p['drop'] > .001:
-        previous = water(0) - midpoint
-        for i in range(1, 1001):
-            z = i / 1000
-            value = water(z) - midpoint
-            if previous * value < 0 or (value == 0 and previous != 0):
-                crossings.append(z - .001 + .001 * abs(previous) / (abs(previous) + abs(value)))
-            previous = value
-    boundary = crossings[0] if len(crossings) == 1 else None
-    rows, trials, groups = [], [], {}
-    steps = int(round(budget_s / .05))
-    for repeat in range(int(repeats)):
-        for mode, name in enumerate(MODES):
-            rng = random.Random(seed + repeat) # paired noise realizations at acquisition times
-            core.lab_trial_reset(mode)
-            depth = velocity = command = energy = travel = 0.
-            probe = water(0)
-            previous_state = 1
-            trial_rows = []
-            for step in range(1, steps + 1):
-                ms = step * 50
-                velocity += (command * 1.2 - velocity * 1.5 - .01) * .05
-                before = depth
-                depth += velocity * .05
-                if depth <= 0: depth = velocity = 0.
-                travel += abs(depth - before)
-                truth = water(depth)
-                probe += (truth - probe) * (1 - math.exp(-.05 / p['tau']))
-                temperature = probe + rng.gauss(0, p['noise'])
-                energy += 12 * abs(command) * 4 * .05
-                inputs = (ctypes.c_float * 9)(ms, temperature, depth, velocity, 12, abs(command)*4, 0, 1, 0)
-                out = (ctypes.c_float * 12)()
-                core.lab_trial_tick(ms, .05, inputs, out)
-                state, faults = int(out[0]), int(out[1])
-                # Direction belongs to the acquisition interval, not the next command.
-                leg = {2:'descent', 4:'ascent'}.get(previous_state, 'settle_or_hold')
-                row = dict(repeat=repeat+1, mode=name, ms=ms, direction=leg,
-                           depth_m=depth, probe_depth_m=depth, temperature_raw_c=temperature,
-                           reference_temperature_c=truth, vertical_mps=velocity,
-                           command_next=float(out[2]), speed_limit_mps=float(out[4]),
-                           state=state, faults=faults, transition=int(out[7]),
-                           region_valid=int(out[9]), region_low_m=float(out[10]), region_high_m=float(out[11]),
-                           path_m=travel, toy_propulsion_j=energy,
-                           actual_tau_s=p['tau'], assumed_tau_s=config['probe_tau_s'],
-                           noise_sigma_c=p['noise'], field_shape=p['shape'], profile_x_m=p['profile_x'],
-                           field_center_m=p['center'], field_width_m=p['width'], field_drop_c=p['drop'],
-                           allowance_s=budget_s, seed=seed+repeat)
-                trial_rows.append(row)
-                command, previous_state = float(out[2]), state
-                if state in (5, 6): break
-            rows.extend(trial_rows)
-            trials.append(dict(repeat=repeat+1, mode=name, allowance_s=budget_s,
-                               elapsed_s=ms/1000, unused_allowance_s=budget_s-ms/1000,
-                               complete=state==5, censored=state not in (5,6), faults=faults,
-                               path_m=travel, toy_propulsion_j=energy))
-            for leg in ('descent', 'ascent'):
-                selected = [r for r in trial_rows if r['direction']==leg]
-                bins = defaultdict(list)
-                for r in selected:
-                    if .1 <= r['probe_depth_m'] < 1.0:
-                        bins[int((r['probe_depth_m']-.1)/BIN_M)].append(r)
-                groups[(repeat, name, leg)] = (selected, bins)
-    metrics = []
-    for repeat in range(int(repeats)):
-        for leg in ('descent', 'ascent'):
-            common = set.intersection(*(set(groups[(repeat, name, leg)][1]) for name in MODES))
-            for name in MODES:
-                selected, bins = groups[(repeat, name, leg)]
-                errors, transition_errors = [], []
-                for index in sorted(common):
-                    values = bins[index]
-                    error = sum(r['temperature_raw_c']-r['reference_temperature_c'] for r in values)/len(values)
-                    errors.append(error)
-                    if boundary is not None and abs(.1+(index+.5)*BIN_M-boundary) <= .15:
-                        transition_errors.append(error)
-                measured_crossings = []
-                if boundary is not None:
-                    for a,b in zip(selected, selected[1:]):
-                        ta,tb = a['temperature_raw_c']-midpoint,b['temperature_raw_c']-midpoint
-                        if ta*tb<0:
-                            measured_crossings.append(a['probe_depth_m']+(b['probe_depth_m']-a['probe_depth_m'])*abs(ta)/(abs(ta)+abs(tb)))
-                # Noise can produce several crossings: use first in travel order,
-                # never the crossing nearest truth. Report the ambiguity count.
-                error_depth = abs(measured_crossings[0]-boundary) if measured_crossings else None
-                rmse = lambda values: math.sqrt(sum(v*v for v in values)/len(values)) if values else None
-                metrics.append(dict(repeat=repeat+1, mode=name, direction=leg, samples=len(selected),
-                                    occupied_bins=len(bins), common_bins=len(common), total_bins=36,
-                                    common_depth_rmse_c=rmse(errors), transition_rmse_c=rmse(transition_errors),
-                                    boundary_depth_error_m=error_depth, measured_crossings=len(measured_crossings),
-                                    transition_fraction=sum(r['transition'] for r in selected)/len(selected) if selected else None))
-    return dict(schema=1, firmware='v0.14', allowance_s=budget_s, repeats=int(repeats), seed=seed,
-                params=p, controller_config=dict(config), reference_boundary_m=boundary,
-                reference='Ideal instantaneous simulator field at the probe; not an independent tank instrument',
-                design='One descent/hold/ascent per trial, equal maximum allowance; early finishes leave unused time. Three paired-noise repeats by default. No relocation or repeated cycles are hidden in the budget.',
-                limitations=['Exact simulated position; zero pressure/probe offset; static water; no mixing or navigation error.',
-                             'Temperature RMSE uses the same occupied 2.5 cm bins for all three modes, separately by direction; report coverage alongside error.',
-                             'Boundary = unique mid-drop isotherm; first measured crossing in travel order; null when undefined or uncrossed.',
-                             'Energy is a command-based propulsion proxy, not measured battery energy; recovery after surface completion is excluded.',
-                             'The controller assumes its configured tau; actual tau may differ. No deconvolution or truth feedback.'],
-                trials=trials, metrics=metrics, rows=rows)
+def _module(name):
+    spec=importlib.util.spec_from_file_location('pelagic_'+name,Path(__file__).with_name(name+'.py'))
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
+
+scenarios=_module('scenarios');evaluation=_module('evaluation')
+MODES=('adaptive','fast','slow','medium','response','ungated')
+MODE_IDS={name:i for i,name in enumerate(MODES)}
+SHAPES={name:i for i,name in enumerate(scenarios.SHAPES)}
+BIN_M=.025
+
+
+def bind(core):
+    ptr=ctypes.POINTER(ctypes.c_float)
+    core.lab_trial_tick.argtypes=[ctypes.c_uint32,ctypes.c_float,ptr,ptr]
+    core.lab_trial_config.argtypes=[ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_uint32]
+    core.lab_version.restype=ctypes.c_char_p
+
+
+def source_identity():
+    root=Path(__file__).resolve().parent.parent
+    paths=sorted((root/'firmware/auv_nano').glob('*.h'))+[root/'firmware/auv_nano/auv_nano.ino',Path(__file__),Path(__file__).with_name('scenarios.py'),Path(__file__).with_name('evaluation.py'),Path(__file__).with_name('controller_bridge.cpp')]
+    return {str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+
+
+def new_run_directory(base):
+    directory=Path(base)/('run-'+str(time.time_ns()))
+    directory.mkdir(parents=True,exist_ok=False);return directory
+
+
+def _trial(core,s,mode,policy,budget_s,repeat):
+    allowed_ms=round(budget_s*1000)
+    if not core.lab_trial_config(MODE_IDS[mode],policy['tau_nominal_s'],policy['tau_max_s'],policy['epsilon_c'],policy['noise_assumed_c'],allowed_ms-5000):
+        raise ValueError('Native controller rejected trial configuration')
+    pipeline=scenarios.ObservationPipeline(s,mode);e=s['errors'];f=s['field']
+    depth=velocity=command=energy=travel=0.
+    probe=scenarios.temperature(f['profile_x'],e['probe_offset_m'],0,s)
+    last=dict(acquired_ms=0,temperature_c=probe+e['temperature_bias_c']+s['noise_sigma_c']*pipeline.measurement_rng.gauss(0,1),depth_m=e['position_bias_m'],velocity_mps=0.)
+    ms=0;previous_state=1
+    while ms<allowed_ms:
+        interval=min(pipeline.interval_ms(),allowed_ms-ms);dt=interval/1000
+        before=depth
+        steps=max(1,math.ceil(dt/.01));subdt=dt/steps
+        for sub in range(steps):
+            t=(ms+(sub+1)*interval/steps)/1000
+            gain=e['thrust_gain']*(e['ascent_gain'] if command<0 else 1)
+            velocity+=(command*gain-e['drag']*velocity-.01+e['acceleration_bias'])*subdt
+            depth+=velocity*subdt
+            if depth<=0:depth=velocity=0.
+            truth=scenarios.temperature(f['profile_x'],depth+e['probe_offset_m'],t,s)
+            tau=s['true_tau_s']*(1+e['flow_tau_factor']*abs(velocity))
+            probe+=(truth-probe)*(1-math.exp(-subdt/tau))
+            energy+=12*abs(command)*4*subdt
+        ms+=interval;travel+=abs(depth-before)
+        observation=pipeline.observe(ms,probe,depth,velocity,dt);fresh=observation is not None
+        if fresh:last=observation
+        inputs=(ctypes.c_float*9)(last['acquired_ms'],last['temperature_c'],last['depth_m'],last['velocity_mps'],12,abs(command)*4,0,1,0)
+        out=(ctypes.c_float*30)();core.lab_trial_tick(ms,dt,inputs,out)
+        # External experiment cap includes arming. Never extend it for a method.
+        cap_abort=ms>=allowed_ms and int(out[0]) not in (5,6)
+        if cap_abort:
+            core.lab_trial_stop();core.lab_trial_tick(ms,0,inputs,out)
+        state,faults=int(out[0]),int(out[1])
+        leg={2:'descent',4:'ascent'}.get(previous_state,'settle_or_hold')
+        row=dict(sample_schema=2,scenario_id=s['id'],split=s['split'],repeat=repeat,mode=mode,
+            ms=ms,acquired_ms=last['acquired_ms'],sample_age_ms=ms-last['acquired_ms'],fresh=int(fresh),
+            direction=leg,depth_m=last['depth_m'],estimated_probe_depth_m=last['depth_m']+e['calibrated_probe_offset_m'],
+            true_depth_m=depth,probe_depth_m=depth+e['probe_offset_m'],temperature_raw_c=last['temperature_c'],
+            probe_state_c=probe,reference_temperature_c=truth,true_gradient_cpm=scenarios.gradient(f['profile_x'],depth+e['probe_offset_m'],ms/1000,s),
+            vertical_mps=last['velocity_mps'],true_vertical_mps=velocity,command_next=float(out[2]),
+            target_depth_m=float(out[3]),speed_limit_mps=float(out[4]),speed_tracking_error_mps=abs(velocity)-float(out[4]),
+            state=state,faults=faults,transition=int(out[7]),region_valid=int(out[9]),region_low_m=float(out[10]),region_high_m=float(out[11]),
+            estimated_temperature_c=float(out[12]),estimated_gradient_cpm=float(out[13]),fit_residual_c=float(out[14]),
+            fit_valid=int(out[15]),policy_reason=int(out[16]),gradient_sigma_proxy_cpm=float(out[17]),condition_proxy=float(out[18]),
+            depth_span_m=float(out[19]),assumed_tau_s=float(out[20]),tau_max_s=float(out[21]),reached_bottom=int(out[22]),
+            budget_return=int(out[23]),geometry_valid=int(out[24]),fit_status=int(out[25]),model_speed_limit_mps=float(out[26]),
+            approximate_lag_error_c=float(out[27]),support_depth_m=float(out[28]),support_temperature_c=float(out[29]),
+            actual_tau_s=tau,path_m=travel,toy_propulsion_j=energy,noise_sigma_c=s['noise_sigma_c'],
+            field_shape=f['shape'],profile_x_m=f['profile_x'],field_center_m=f['center'],field_width_m=f['width'],field_drop_c=f['drop'],
+            allowance_s=budget_s,seed=s['seed'],cap_abort=int(cap_abort))
+        yield row
+        command,previous_state=float(out[2]),state
+        if state in (5,6):break
+
+
+def run_comparison(core,params,config,budget_s=180,repeats=3,seed=20261020,*,policy=None,split='development',varied=False,errors=None,methods=None,output=None,scenario_set=None):
+    if not math.isfinite(budget_s) or not 10<=budget_s<=600:raise ValueError('Trial allowance must be 10–600 s')
+    bind(core);p=dict(scenarios.DEFAULT_POLICY,**(policy or {}))
+    methods=tuple(methods or MODES)
+    if not methods or len(set(methods))!=len(methods) or any(m not in MODE_IDS for m in methods):raise ValueError('Invalid methods')
+    if not(.1<=p['tau_nominal_s']<=8 and p['tau_nominal_s']<=p['tau_max_s']<=16 and 0<p['epsilon_c']<=5 and 0<=p['noise_assumed_c']<=.5):raise ValueError('Invalid frozen policy')
+    definitions=scenario_set or scenarios.generate(params,repeats,seed,split,varied,errors)
+    for s in definitions:scenarios.validate(s)
+    directory=Path(output).resolve() if output else None
+    if directory:
+        directory.mkdir(parents=True,exist_ok=True)
+        if any(directory.iterdir()):raise ValueError('Experiment directory must be new and empty')
+    manifest=dict(schema=2,firmware=core.lab_version().decode(),seed=seed,split=split,allowance_s=budget_s,
+        methods=list(methods),scenarios=definitions,policy=p,policy_sha256=scenarios.policy_digest(p),controller_config=dict(config),
+        source_sha256=source_identity(),protocol='One profile per method/scenario. Same maximum allowance including 5 s arming; early completion leaves unused time. Model-based return reserve is common to methods.',
+        pairing='Same field, clock and channel realization by scenario; independent digital measurement-noise streams by method. Raw samples are not independent experimental replicates.',
+        primary_contrast='response/forward minus medium/raw, separately by direction; adaptation-only and estimator-only contrasts also reported.',
+        reconstruction='Raw digitized samples versus forward-fit support temperature at its filtered-regressor support depth. Current-depth extrapolation is diagnostic, not a hidden truth shift.',
+        scoring='Median bins on fixed 0.10–0.90 m grid; full-profile RMSE undefined if any required bin is missing. Boundary: strongest binned temperature-gradient peak in 0.20–0.80 m, >=2 C/m, optional local parabolic interpolation. Failures remain in denominators.',
+        uncertainty='Scenario-paired bootstrap conditional on joint boundary success. Failure counts and coverage accompany conditional errors; no calibrated onboard confidence interval is claimed.')
+    if directory:(directory/'manifest.json').write_text(json.dumps(manifest,indent=2,allow_nan=False)+'\n')
+    rows=[];metrics=[];trials=[];preview=[];stream=None;writer=None
+    try:
+        if directory:stream=(directory/'samples.csv').open('w',newline='')
+        for repeat,s in enumerate(definitions,1):
+            for mode in methods:
+                trial_rows=[]
+                for row in _trial(core,s,mode,p,budget_s,repeat):
+                    trial_rows.append(row)
+                    if stream:
+                        if writer is None:writer=csv.DictWriter(stream,fieldnames=list(row));writer.writeheader()
+                        writer.writerow(row)
+                    else:rows.append(row)
+                last=trial_rows[-1]
+                trials.append(dict(scenario_id=s['id'],repeat=repeat,mode=mode,allowance_s=budget_s,elapsed_s=last['ms']/1000,
+                    unused_allowance_s=budget_s-last['ms']/1000,complete=last['state']==5,full_profile_complete=bool(last['state']==5 and last['reached_bottom']),
+                    censored=bool(last['cap_abort'] or last['faults']&128 or (last['budget_return'] and not last['reached_bottom'])),
+                    budget_return=bool(last['budget_return']),faults=last['faults'],path_m=last['path_m'],toy_propulsion_j=last['toy_propulsion_j']))
+                metrics.extend(evaluation.score_trial(trial_rows,s,p))
+                if repeat==1:
+                    stride=max(1,len(trial_rows)//350)
+                    preview.extend(trial_rows[::stride])
+                if stream:stream.flush()
+    finally:
+        if stream:stream.close()
+    evaluation.shared_bins(metrics)
+    paired=evaluation.paired_effects(metrics,seed)
+    boundary=scenarios.boundary(0,definitions[0]) if len(definitions) else None
+    result=dict(schema=2,firmware=manifest['firmware'],allowance_s=budget_s,repeats=len(definitions),seed=seed,
+        split=split,params=dict(params),controller_config=dict(config),policy=p,manifest=manifest,reference_boundary_m=boundary,
+        reference='Ideal simulated field; not an independently calibrated physical reference.',
+        design=manifest['protocol'],limitations=['First-order static local-linear estimator; moving/curved fields and wrong tau can invalidate it.',
+            'Onboard residual/conditioning/sigma are reliability proxies, not calibrated confidence intervals.',
+            'Toy planar/vertical dynamics and command-based energy; no physical vehicle or wet-probe validation.',
+            'Bootstrap intervals are conditional on joint detector success; show failures and coverage.'],
+        trials=trials,metrics=metrics,paired=paired,rows=rows,preview=preview,
+        samples_path=str(directory/'samples.csv') if directory else None,run_directory=str(directory) if directory else None)
+    if directory:save_comparison(result,directory)
+    return result
 
 
 def comparison_csv(result):
-    if not result or not result['rows']: return ''
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(result['rows'][0]))
-    writer.writeheader(); writer.writerows(result['rows'])
-    return output.getvalue()
+    if not result:return ''
+    if result.get('samples_path'):return Path(result['samples_path']).read_text()
+    if not result['rows']:return ''
+    output=io.StringIO();writer=csv.DictWriter(output,fieldnames=list(result['rows'][0]));writer.writeheader();writer.writerows(result['rows']);return output.getvalue()
 
 
-def save_comparison(result, directory):
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory/'samples.csv').write_text(comparison_csv(result))
-    (directory/'summary.json').write_text(json.dumps({k:v for k,v in result.items() if k!='rows'}, indent=2, allow_nan=False)+'\n')
+def save_comparison(result,directory):
+    directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
+    if not result.get('samples_path'):
+        (directory/'samples.csv').write_text(comparison_csv(result))
+        (directory/'manifest.json').write_text(json.dumps(result['manifest'],indent=2,allow_nan=False)+'\n')
+    summary={k:v for k,v in result.items() if k not in ('rows','preview')}
+    (directory/'summary.json').write_text(json.dumps(summary,indent=2,allow_nan=False)+'\n')
+    if result['metrics']:
+        with (directory/'metrics.csv').open('w',newline='') as stream:
+            writer=csv.DictWriter(stream,fieldnames=list(result['metrics'][0]));writer.writeheader();writer.writerows(result['metrics'])
