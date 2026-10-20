@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {KeyboardDrive} from '../lab/static/keyboard.mjs';
+const keys=new KeyboardDrive();
+assert(keys.press('KeyW'));assert(keys.press('ArrowUp'));
+keys.release('KeyW');assert.deepEqual([...keys.directions()],['up']);
+keys.press('KeyD');assert.deepEqual(new Set(keys.directions()),new Set(['up','right']));
+keys.release('ArrowUp');assert.deepEqual([...keys.directions()],['right']);
+keys.clear();assert.equal(keys.directions().size,0);
+keys.press('KeyD',true);assert.equal(keys.directions().size,0,'Repeat after blur cannot re-latch input');
+assert.equal(keys.press('Space'),false);assert.equal(keys.press('KeyP'),false);
+keys.press('KeyA');keys.press('KeyD');keys.release('KeyA');
+assert.deepEqual([...keys.directions()],['right']);keys.clear();
+console.log('PASS: physical key tracking, aliases, simultaneous input, release and blur repeat handling');
