@@ -1,3 +1,5 @@
+> Superseded by [v0.13 research alignment and trajectory corrections](RESEARCH_ALIGNMENT_V013.md). The 17-field EXP frame and eight-second limits remain; firmware identity is now v0.13.
+
 # Nano v0.12: bounded local visits and shorter paths
 
 Each complete local visit has an 8,000 ms observation-clock deadline. The initial upward retrace and subsequent probing share that deadline; it is not reset when changing from retrace to probe. Each stationary hold also has an 8,000 ms deadline. Deadlines cause a new target decision, not mission termination. Stop, Reset, invalid observations and lost connection can still terminate a run. No total time or travelled-distance budget is imposed.
