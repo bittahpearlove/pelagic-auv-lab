@@ -22,44 +22,55 @@ class Explorer {
     lastX=o.x;lastZ=o.z;markObserved(o.x,o.z);
     if(phase==Descend){
       targetX=descentX;targetZ=2.7f;
-      if(separated(o.x,o.z,anchorX,anchorZ,1500)){
-        evidence=fabsf(o.temperature-anchorT)>=trigger?uint8_t(evidence+1):0;
-        anchorX=o.x;anchorZ=o.z;anchorT=o.temperature;
-        if(evidence>=2)startLocal(o,true);
-      }
+      if(changed(o))startLocal(o,true);
       if(phase==Descend&&reached(o))enterMonitor(o);
     }
-    if(phase==Transit&&reached(o)){
-      if(fabsf(o.temperature-transitT)>=trigger)startLocal(o,false);
-      else chooseFrontier(o);
+    if(phase==Transit){
+      // Check along the track, not just the temperature at the endpoint.
+      if(changed(o))startLocal(o,true);
+      else if(reached(o))chooseFrontier(o);
     }
     if(phase==Monitor&&uint32_t(o.ms-phaseStart)>=8000)chooseFrontier(o);
     if(local){
       if(separated(o.x,o.z,fitLastX,fitLastZ,400))addFit(o);
       // Every local burst (including retrace) has its own 8 s deadline, shared by retrace and probing.
-      if(uint32_t(o.ms-phaseStart)>=8000){localExit=2;chooseFrontier(o);}
+      if(uint32_t(o.ms-phaseStart)>=8000){if(localExit!=5)localExit=2;chooseFrontier(o);}
       else if(phase==Backtrack){
         if(reached(o)){phase=Probe;centreZ=o.z;clearFit(o);if(!seedTarget())chooseFrontier(o);}
       }else if(reached(o)){
         localStep++;
         if(localStep<2){if(!seedTarget())chooseFrontier(o);}
-        else {localExit=1;enterMonitor(o);}
+        else {if(localExit!=5)localExit=1;enterMonitor(o);}
       }
     }
     const float speed=(phase==Descend||phase==Transit)?.10f:phase==Backtrack?fminf(.04f,.08f/fmaxf(.1f,tau)):fminf(.08f,.10f/fmaxf(.1f,tau));
-    const float vz=clip(1.8f*(targetZ-o.z),-speed,speed),vx=clip(1.8f*(targetX-o.x),-speed,speed);
+    float vz=1.8f*(targetZ-o.z),vx=1.8f*(targetX-o.x);
+    // Limit the vector norm: independent axis clipping allowed sqrt(2)*speed.
+    const float magnitude=hypotf(vx,vz);
+    if(magnitude>speed){vx*=speed/magnitude;vz*=speed/magnitude;}
     surge=clip((1.4f*vx+2*(vx-o.vx))/.8f,-1,1);heave=clip((1.8f*vz+.018f+2*(vz-o.vz))/.6f,-1,1);
   }
  private:
   bool initialized=false;
   uint8_t evidence=0,count=0,head=0;
   uint32_t lastMs=0,phaseStart=0;
-  float transitT=0;
+  float previousDX=0,previousDZ=0;
   float anchorX=0,anchorZ=0,anchorT=0,centreX=0,centreZ=0,descentX=4,triggerZ=0,lastX=0,lastZ=0;
   float fitLastX=0,fitLastZ=0,fitT=0;
   uint8_t observed[192]={};
   float qx[16]={},qz[16]={},qt[16]={};
   static float clip(float v,float lo,float hi){return fmaxf(lo,fminf(hi,v));}
+  bool changed(const ExplorationObservation&o){
+    if(!separated(o.x,o.z,anchorX,anchorZ,1500))return false;
+    const float dx=o.x-anchorX,dz=o.z-anchorZ,length=hypotf(dx,dz);
+    // Consecutive, direction-consistent spatial windows. A point or a hold
+    // cannot establish a gradient. Threshold is in C/m, with a delta floor.
+    if(dx*previousDX+dz*previousDZ<0)evidence=0;
+    const float delta=fabsf(o.temperature-anchorT);
+    evidence=delta>=trigger&&delta/length>=2.0f?uint8_t(evidence+1):0;
+    anchorX=o.x;anchorZ=o.z;anchorT=o.temperature;previousDX=dx;previousDZ=dz;
+    return evidence>=2;
+  }
   static bool separated(float x,float z,float a,float b,int32_t radius){
     const int32_t dx=int32_t(lroundf(x*10000))-int32_t(lroundf(a*10000)),dz=int32_t(lroundf(z*10000))-int32_t(lroundf(b*10000));
     return dx>=radius||dx<=-radius||dz>=radius||dz<=-radius||dx*dx+dz*dz>=radius*radius;
@@ -101,7 +112,12 @@ class Explorer {
     triggerZ=o.z;centreX=o.x;centreZ=o.z;clearFit(o);
     if(retrace){
       targetX=o.x;
-      targetZ=clip(o.z-fminf(.12f,3*fminf(.04f,.08f/fmaxf(.1f,tau))),.2f,2.7f);
+      const float speed=fminf(.04f,.08f/fmaxf(.1f,tau));
+      const float required=hypotf(o.vx,o.vz)*tau+.30f; // lag + two detection windows
+      const float feasible=3.6f*speed; // reserve 4.4 s of the 8 s for local geometry
+      const float retraceDistance=fminf(required,feasible);
+      targetZ=clip(o.z-retraceDistance,.2f,2.7f);
+      if(o.z-targetZ+.03f<required)localExit=5; // unresolved lag margin, not a validated boundary
     }else if(!seedTarget())chooseFrontier(o);
   }
   void enterMonitor(const ExplorationObservation&o){
@@ -109,6 +125,7 @@ class Explorer {
     targetX=clip(o.x,.4f,7.6f);targetZ=clip(o.z,.2f,2.7f);
   }
   void chooseFrontier(const ExplorationObservation&o){
+    const bool continuingTransit=phase==Transit;
     // Integer millimetres keep distance/turn scores identical on AVR and native.
     // Penalize known-water transit and sharp reversals, not just endpoint length.
     const int32_t ox=lroundf(o.x*1000),oz=lroundf(o.z*1000);
@@ -131,10 +148,13 @@ class Explorer {
       if(cost<best){found=true;best=cost;bx=x;bz=z;}
     }
     local=false;phaseStart=o.ms;
-    if(found){phase=Transit;targetX=bx/1000.0f;targetZ=bz/1000.0f;transitT=o.temperature;}
+    if(found){phase=Transit;targetX=bx/1000.0f;targetZ=bz/1000.0f;}
     else{
       // Explicit domain exhaustion: do not invent motion or erase history.
       phase=Exhausted;targetX=clip(o.x,.4f,7.6f);targetZ=clip(o.z,.2f,2.7f);
     }
+    // Short frontier hops must not erase the displacement window or persistent
+    // evidence. Reversal rejection occurs when the next window is evaluated.
+    if(!continuingTransit){evidence=0;previousDX=previousDZ=0;anchorX=o.x;anchorZ=o.z;anchorT=o.temperature;}
   }
 };
