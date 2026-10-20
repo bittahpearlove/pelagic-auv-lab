@@ -51,6 +51,40 @@ class LabTests(unittest.TestCase):
             if mode==1:
                 self.assertTrue(all(r['speed_limit_mps']>.049 for r in rows if r['state']==2))
         self.assertLess(durations[1],durations[0]); self.assertLess(durations[0],durations[2])
+
+    def test_research_trials_are_reproducible_and_report_missing_boundaries(self):
+        lab=self.lab
+        result=module.research.run_comparison(lab.core, lab.params, lab.native_config, repeats=1)
+        repeated=module.research.run_comparison(lab.core, lab.params, lab.native_config, repeats=1)
+        self.assertEqual(result,repeated)
+        self.assertEqual(len(result['trials']),3)
+        self.assertTrue(all(t['complete'] and t['allowance_s']==180 for t in result['trials']))
+        self.assertAlmostEqual(result['reference_boundary_m'],.5,places=3)
+        self.assertEqual({r['direction'] for r in result['metrics']},{'descent','ascent'})
+        self.assertTrue(all(r['common_bins']>30 for r in result['metrics']))
+        self.assertTrue(all(r['boundary_depth_error_m'] is not None for r in result['metrics']))
+        self.assertEqual({r['actual_tau_s'] for r in result['rows']},{2})
+        self.assertTrue(any(r['region_valid'] for r in result['rows'] if r['mode']=='adaptive'))
+        flat=module.research.run_comparison(lab.core,dict(lab.params,drop=0),lab.native_config,repeats=1)
+        self.assertIsNone(flat['reference_boundary_m'])
+        self.assertTrue(all(r['boundary_depth_error_m'] is None for r in flat['metrics']))
+        self.assertTrue(all(r['transition']==0 for r in flat['rows']))
+        short=module.research.run_comparison(lab.core,lab.params,lab.native_config,budget_s=10,repeats=1)
+        self.assertTrue(all(t['censored'] and t['elapsed_s']==10 for t in short['trials']))
+
+    def test_full_csv_survives_the_live_history_limit(self):
+        lab=self.lab
+        lab.action(dict(action='start'));lab.offline_tick()
+        values=[lab.latest.get(key) for key in module.FIELDS[1:]]
+        for _ in range(10010): lab.append(values)
+        lab.csv_log.flush()
+        self.assertEqual(len(lab.rows),10000)
+        import csv
+        with lab.csv_path.open() as stream:
+            saved=list(csv.DictReader(stream))
+        self.assertEqual(len(saved),lab.seq)
+        self.assertEqual(saved[0]['seq'],'1')
+        self.assertEqual(int(saved[-1]['seq']),lab.seq)
     def test_flat_water_does_not_trigger(self):
         self.lab.params.update(drop=0,noise=0)
         self.lab.action(dict(action='start'))
@@ -272,8 +306,8 @@ class LabTests(unittest.TestCase):
             def close(self):pass
         link=Link();lab.serial=link;lab.source='nano';lab.verified=True;lab.last_rx=module.time.monotonic();lab.identity='v0.5'
         try:
-            with self.assertRaisesRegex(ValueError,'v0.12'):lab.action(dict(action='explore_start'))
-            lab.identity='v0.12';lab.action(dict(action='explore_start',shape='patch',drop=0))
+            with self.assertRaisesRegex(ValueError,'v0.13'):lab.action(dict(action='explore_start'))
+            lab.identity='v0.13';lab.action(dict(action='explore_start',shape='patch',drop=0))
             self.assertEqual(link.writes[0],b'DISARM\nEXPL,1,2.000\n')
             lab.exploration_tick();sequence=lab.explore_pending
             packet=link.writes[-1].decode().strip().split(',')
