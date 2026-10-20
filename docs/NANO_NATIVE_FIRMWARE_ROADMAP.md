@@ -1,7 +1,6 @@
 # Native firmware and 2D demo handoff
 
-Latest source and physically verified Nano firmware: v0.5 (compact shared-field lab).
-See NANO_V05_UPLOAD.md for current operation and upload steps. Earlier version records below describe prior milestones.
+Current source and physically verified Nano firmware: v0.13 (simulation-only). See the root README and RESEARCH_ALIGNMENT_V013.md for current operation, proposal review and remaining physical work. Earlier version records below describe prior milestones.
 
 19 October 2026. Project: low-cost, sensor-response-aware adaptive vertical
 temperature profiling with a three-thruster AUV. Starting board: classic
