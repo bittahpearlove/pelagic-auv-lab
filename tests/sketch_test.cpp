@@ -15,7 +15,7 @@ int main() {
   assert(verticalEsc.attached == -1 && leftEsc.attached == -1 && rightEsc.attached == -1);
   Serial.output.clear();
   send("HELLO\n");
-  assert(Serial.output.find("# AUV Nano adaptive v0.13; simulated=1; motors=0") != std::string::npos);
+  assert(Serial.output.find("# AUV Nano adaptive v0.14; simulated=1; motors=0") != std::string::npos);
   assert(Serial.output.find("# CONFIG,target_depth_m=") != std::string::npos);
   assert(Serial.output.find(",probe_tau_s=2") != std::string::npos);
   assert(Serial.output.find("ms,sample_ms,") != std::string::npos);
