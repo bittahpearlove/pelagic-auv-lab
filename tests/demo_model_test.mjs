@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {MovementDemo} from '../lab/static/demo-model.mjs';
+const demo=new MovementDemo();
+const initial=demo.x;
+for(let i=0;i<100;i++)demo.step(.02,1,0);
+assert(demo.x>initial+.5,'Forward input must move right');
+const speed=demo.vx;demo.step(.02,0,0);assert(demo.vx>0&&demo.vx<speed,'Neutral coasts with drag');
+demo.reset();for(let i=0;i<500;i++)demo.step(.02,0,1);
+assert(demo.z>1.5,'Descend crosses the layer');
+assert(demo.rows.some(r=>Math.abs(r[5]-r[6])>.15),'Probe lag must be visible');
+for(let i=0;i<3000;i++)demo.step(.02,100,100);
+assert(demo.x<=7.8&&demo.z<=2.85,'Keep vehicle inside the pool');
+assert.equal(demo.surge,1);assert.equal(demo.heave,1);
+for(let i=0;i<3000;i++)demo.step(.02,-1,-1);
+assert(demo.x>=.2&&demo.z>=.08,'Respect left and surface boundaries');
+for(let i=0;i<35000;i++)demo.step(.02,0,0);
+assert.equal(demo.rows.length,6000);assert.equal(demo.path.length,2000);
+const fast=new MovementDemo(),slow=new MovementDemo();
+for(let i=0;i<500;i++){fast.step(.02,0,1,.2);slow.step(.02,0,1,8);}
+assert(slow.measured>fast.measured+.2,'Longer response delay must increase lag on descent');
+const t=demo.t;demo.step(NaN,0,0);demo.step(-1,0,0);assert.equal(demo.t,t);
+demo.reset();assert.equal(demo.x,2);assert.equal(demo.z,.35);assert.equal(demo.rows.length,0);
+const flat=new MovementDemo();
+for(let i=0;i<500;i++)flat.step(.02,0,1,2,{center:.5,width:.07,drop:0});
+assert.equal(flat.truth,22);assert.equal(flat.measured,22);
+const shared=new MovementDemo();shared.step(.02,0,0,2,{center:.5,width:.07,drop:3});
+assert(Math.abs(shared.truth-(20.5-1.5*Math.tanh((shared.z-.5)/.07)))<1e-9,'Merged water settings must drive free swim');
+console.log('PASS: 2D movement, coasting, probe lag, bounds, input limits, history and reset');
