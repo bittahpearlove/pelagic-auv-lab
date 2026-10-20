@@ -60,7 +60,9 @@ if __name__=='__main__':
     (dest/'scores.json').write_text(json.dumps(result,indent=2,allow_nan=False)+'\n')
     original=json.loads((args.directory/'summary.json').read_text())
     # CSV preserves floats exactly, but boolean counters re-read as numeric 0/1.
-    assert result['metrics']==original['metrics'],'Saved-data scores differ from original'
-    assert result['paired']==original['paired'],'Saved-data paired effects differ from original'
+    assert len(result['metrics'])==len(original['metrics']),'Metric count differs'
+    assert all({k:new[k] for k in old}==old for new,old in zip(result['metrics'],original['metrics'])),'Saved-data original scores differ' 
+    assert len(result['paired'])==len(original['paired']),'Contrast count differs'
+    assert all({k:new[k] for k in old}==old for new,old in zip(result['paired'],original['paired'])),'Saved-data original paired effects differ' 
     if args.plots:figures(args.directory,dest)
-    print('Saved-data evaluation matches original:',dest)
+    print('Original saved-data fields match; current diagnostic/loss fields saved separately:',dest)
