@@ -68,10 +68,10 @@ class LabTests(unittest.TestCase):
             self.assertTrue(self.lab.latest['faults']&bit)
             self.assertEqual(self.lab.latest['command'],0)
     def test_serial_startup_noise_then_verified_frame(self):
-        log=(Path(__file__).resolve().parents[1]/'output/logs/nano_adaptive_demo.txt').read_text().splitlines()
-        banner=next(x for x in log if x.startswith('# AUV Nano adaptive v0.2;'))
-        header=next(x for x in log if x.startswith('ms,sample_ms,'))
-        row=next(x for x in log if x[:1].isdigit())
+        # Self-contained legacy protocol fixture; no generated hardware log needed.
+        banner='# AUV Nano adaptive v0.2; check Config.h; DEMO is simulation only'
+        header='ms,sample_ms,simulated,state,faults,valid,leak,temp_raw_c,temp_c,pressure_mbar,depth_raw_m,depth_m,vertical_mps,roll_deg,pitch_deg,voltage_v,current_a,target_depth_m,left_cmd,right_cmd,vertical_cmd,mode,speed_limit_mps,gradient_cpm,gradient_valid,transition,demo'
+        row=','.join(map(str,[0,0,1,0,0,1,0,22,22,1013.25,0,0,0,0,0,12,0,1,0,0,0,0,.05,0,0,0,0]))
         class FakeSerial:
             def __init__(self): self.data=(('0.000,0,0,0.000\n'*1500)+'\n'+banner+'\n'+header+'\n'+row+'\n').encode()
             @property
