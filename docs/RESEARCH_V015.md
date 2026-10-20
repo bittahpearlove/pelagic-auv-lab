@@ -69,3 +69,7 @@ Local evidence: `output/experiments/v015-development-nominal/`, `v015-developmen
 4. Integrate real drivers, logging, buoyancy/recovery and actuation only after bench validation. Current firmware uses simulated sensors and disabled motors.
 
 See [calibration protocol](PROBE_CALIBRATION.md), [firmware protocol](NANO_V015_RESEARCH.md), and [review disposition](REVIEW_RESPONSE_V015.md).
+
+## Review follow-up: failure-aware scoring
+
+The 20 October lab revision adds capped boundary loss, all-expected-scenario paired mean loss differences, fresh-sample rejection fractions in an evaluator-only +/-0.15 m transition window, and status-by-depth counts. Default cap/miss penalty are both 0.30 m and need scientific justification and sensitivity analysis before evaluation. CLI: `--error-cap` and `--miss-penalty` (development only; freeze them in the policy for evaluation). Historical controller and result claims above remain unchanged. Fresh source hashes require a fresh freeze. See [implementation and limitations](V015_FOLLOWUP.md).
