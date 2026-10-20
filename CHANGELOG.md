@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.14 — bounded exploration that resumes the profile
+
+- Limit the complete unvisited-water phase to 10 s; waypoint changes cannot restart it.
+- Keep unvisited targets local; return to the saved descent line/depth after search or exhaustion.
+- Resume vertical descent with 0.25 m progress before rearming another investigation.
+- Ascend and complete at the surface after reaching 2.7 m; quiet water goes straight down/up.
+- Retain the 8 s local limit. Bound checkpoint return and stalled ascent with explicit recovery behavior.
+- Add Return/Ascend telemetry states, update lab labels and verify full mission completion.
+
 ## v0.13 — proposal-aligned vertical evaluation
 
 - Remember measured transition depth bands for a slower return ascent; clear acquisition history at reversal.
