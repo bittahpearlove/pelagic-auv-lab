@@ -16,6 +16,7 @@ jobs:
       - run: bash tools/test.sh
       - run: python tests/lab_test.py
       - run: python tests/research_test.py
+      - run: node tests/research_summary_test.mjs
       - run: node tests/keyboard_test.mjs
       - run: node tests/demo_model_test.mjs
       - run: node tests/thermal_map_test.mjs
