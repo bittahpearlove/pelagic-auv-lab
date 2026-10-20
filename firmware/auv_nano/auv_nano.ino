@@ -52,7 +52,7 @@ void printConfig() {
 }
 
 void printIdentity() {
-  Serial.print(F("# AUV Nano adaptive v0.12; simulated="));
+  Serial.print(F("# AUV Nano adaptive v0.13; simulated="));
   Serial.print(Config::SIMULATED_SENSORS ? 1 : 0);
   Serial.print(F("; motors="));
   Serial.println(Config::ENABLE_MOTOR_OUTPUTS ? 1 : 0);
@@ -155,7 +155,7 @@ void handleCommand(uint32_t now) {
   } else if (!strcmp(command, "STATUS")) {
     lastTelemetry = now - Config::TELEMETRY_MS;
   } else {
-    Serial.println(F("# commands: ARM START STOP DISARM STATUS HELLO CONFIG ADAPT FAST SLOW DEMO WATER0..4 X0.5..7.5 EXPL,adapt,tau,path_m OBS,seq,ms,x,z,vx,vz,T"));
+    Serial.println(F("# commands: ARM START STOP DISARM STATUS HELLO CONFIG ADAPT FAST SLOW DEMO WATER0..4 X0.5..7.5 EXPL,adapt,tau OBS,seq,ms,x,z,vx,vz,T"));
   }
   writeMotors();
 }
