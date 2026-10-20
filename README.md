@@ -2,15 +2,17 @@
 
 Arduino Nano firmware and a local 2D laboratory for exploring how an underwater vehicle can spend more measurements near changing temperature boundaries, while accounting for probe response delay.
 
-**Research prototype, firmware v0.13.** The controller has been tested on a classic ATmega328P Nano over USB. Water, position, depth and vehicle dynamics are simulated. Real sensor acquisition, underwater localization, onboard storage and physical propulsion are not integrated. Motor outputs are disabled. This is not a field-ready AUV or evidence of Arctic deployment.
+**Research prototype, firmware v0.14.** The controller has been tested on a classic ATmega328P Nano over USB. Water, position, depth and vehicle dynamics are simulated. Real sensor acquisition, underwater localization, onboard storage and physical propulsion are not integrated. Motor outputs are disabled. This is not a field-ready AUV or evidence of Arctic deployment.
 
 ![Local experiment workbench](docs/images/workbench.png)
 
 ## Current experiment
 
-The controller first descends vertically. A persistent measured along-track gradient triggers an upward retrace and a local probe. The controller reports when the eight-second allowance cannot cover the estimated sensor/detection margin. Each entire local visit is capped at eight simulated seconds; each stationary hold also lasts at most eight seconds. It then selects an unvisited nearby target, penalizing distance, sharp reversals and travel through known cells. No prescribed sweep is used.
+The controller descends vertically. A persistent measured gradient triggers a slow retrace and local probe, capped at eight seconds. It may then sample nearby unvisited water for **ten seconds total**, across all waypoint changes. It returns to the original descent line and the depth where the detour began, then resumes descending. Another investigation requires at least 0.25 m of further depth progress.
 
-A 192-byte bitmap remembers visited 0.125 m cells for the run. Probe moves use two short adjoining legs instead of repeatedly returning through a diamond. If the permitted tank domain has no useful unvisited candidates left, it reports No unvisited target; this does not establish temperature accuracy. There is no overall exploration time or travel budget; Stop ends the run. The separate Adaptive profile activity retains its finite descent/hold/ascent mission.
+At 2.7 m it ascends directly to the simulated surface and completes. Quiet water follows a straight descent/ascent. There are no sweeps or endless frontier searches. Unvisited targets remain inside the local investigation region. A 192-byte bitmap remembers visited 0.125 m cells without preventing the necessary checkpoint return. If no unvisited candidate exists, it immediately returns to the profile.
+
+Checkpoint return has a 15 s watchdog: on expiry, attempt ascent from the current location. Ascent has a 60 s watchdog that reports recovery failure if stalled. These are phase limits, not a guarantee of physical recovery; this is a simulated plant with motors disabled. The separate vertical Research comparison is unchanged.
 
 The Nano receives delayed probe temperature and estimated position/velocity over USB, and returns motion requests. The same C++ controller runs natively in offline mode. Simulator truth is used for visualization/evaluation, not supplied as a gradient or map to the controller. Temperature-gradient estimates are local plane fits; no heat-equation PDE solver is required.
 
@@ -39,7 +41,7 @@ python3 tools/compare_profiles.py
 
 This compares fixed-fast, fixed-slow and adaptive vertical profiles with the same 180 s maximum allowance and three paired-noise repeats each. The adaptive controller remembers measured transition bands for the ascent. Compare descent/ascent errors separately, shared-depth coverage, boundary error, time and completion. A trial ends on surfacing; unused allowance is reported. Simulator reference is ideal water, not independent physical validation. Results and raw samples are saved under `output/experiments/profile_comparison/`.
 
-[Original-proposal review, methods, illustrative results and remaining work](docs/RESEARCH_ALIGNMENT_V013.md) explain why open-ended exploration alone cannot answer the research question. No total exploration time or travel limit was added.
+[Original-proposal review, methods, illustrative results and remaining work](docs/RESEARCH_ALIGNMENT_V013.md) explain why open-ended exploration alone cannot answer the research question. Exploration now returns from bounded detours and eventually surfaces.
 
 ## Connect a classic Nano
 
@@ -82,7 +84,8 @@ node tests/survey_planner_test.mjs
 
 ## Research scope and documentation
 
-- [Current research alignment and v0.13 trajectory](docs/RESEARCH_ALIGNMENT_V013.md)
+- [v0.14 bounded search, checkpoint return and surfacing](docs/NANO_V014_PROFILE_RETURN.md)
+- [Original proposal review and research comparison](docs/RESEARCH_ALIGNMENT_V013.md)
 - [v0.12 trajectory and unchanged USB frame](docs/NANO_V012_BOUNDED_LOCAL.md)
 - [Temperature probes and response-time experiment](docs/TEMPERATURE_PROBES.md)
 - [Local laboratory guide](lab/README.md)
