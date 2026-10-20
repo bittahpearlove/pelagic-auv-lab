@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {generateSurvey} from '../lab/static/demo-model.mjs';
+import {ThermalMap,temperatureAt,trueGradient} from '../lab/static/thermal-map.mjs';
+for(const sample of JSON.parse(readFileSync(new URL('./thermal_fields.json',import.meta.url),'utf8')))assert(Math.abs(temperatureAt(sample.x,sample.z,sample)-sample.temperature)<1e-10);
+const p={center:1.3,width:.1,drop:3,shape:'tilted'};
+assert(temperatureAt(1,1.3,p)<temperatureAt(7,1.3,p),'Sloped layer must vary horizontally');
+const g=trueGradient(4,1.3,p);assert(g.gx>0&&g.gz<0);assert(Math.abs(g.gx/g.gz+.16)<.001);
+const frontGradient=trueGradient(4,1,{...p,shape:'front'});assert(frontGradient.gx<0);assert(Math.abs(frontGradient.gz)<1e-10,'Lateral front has no vertical gradient');
+const patch={...p,shape:'patch'};assert(temperatureAt(5.3,1.65,patch)>temperatureAt(5.3,1.65,{...patch,shape:'layer'})+1.99);
+const map=new ThermalMap();assert.equal(map.estimate(4,1),null);
+for(let i=0;i<50;i++)map.add(3+i*.04,1,10+(3+i*.04)*.2-1*1.5);
+assert.equal(map.estimate(4,1).gradient,null,'Straight track cannot resolve 2D gradient');
+map.clear();for(let ix=0;ix<=10;ix++)for(let iz=0;iz<=10;iz++){const x=3+ix*.2,z=.5+iz*.1;map.add(x,z,10+.2*x-1.5*z);}
+const e=map.estimate(4,1);assert(e.gradient);assert(Math.abs(e.gradient.gx-.2)<1e-8);assert(Math.abs(e.gradient.gz+1.5)<1e-8);assert(Math.abs(e.temperature-9.3)<1e-8);assert(e.coverage>.5);
+assert.equal(map.estimate(7,2.8),null,'Far unobserved water must remain unknown');
+const before=map.cells.size;for(let i=0;i<500;i++)map.add(4,1,9.3);assert.equal(map.cells.size,before,'Repeated samples do not create spatial coverage');
+map.add(NaN,1,2);map.add(9,1,2);assert.equal(map.cells.size,before);assert(map.cells.size<=1200);
+map.clear();for(let i=0;i<20;i++)map.add(3+i*.05,.5+i*.025,20);assert.equal(map.estimate(3.5,.75).gradient,null,'Diagonal tracks also lack 2D information');
+map.clear();assert.equal(map.samples,0);assert.equal(map.cells.size,0);
+const survey=generateSurvey({...p,shape:'combined',tau:2});
+assert.equal(survey.reached,survey.total);assert(survey.demo.rows.length>500);
+const surveyMap=new ThermalMap();for(const r of survey.demo.rows)surveyMap.add(r[1],r[2],r[6]);
+assert(surveyMap.cells.size>100);assert(surveyMap.estimate(4,1.3)?.gradient,'Survey must support a 2D gradient in the interior');
+assert(survey.demo.rows.some(r=>Math.abs(r[5]-r[6])>.1),'Survey should expose probe lag');
+console.log('PASS: tilted/patch fields, correct gradient direction, local plane recovery, geometry rejection, unknown areas and reset');
