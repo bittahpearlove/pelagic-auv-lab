@@ -8,6 +8,7 @@ SCHEMA=1
 SHAPES=('layer','tilted','front','patch','combined')
 DEFAULT_POLICY=dict(tau_nominal_s=2.,tau_max_s=2.5,epsilon_c=.1,noise_assumed_c=.005,
                     primary_baseline='medium',gradient_threshold_cpm=2.,bin_m=.025,
+                    boundary_error_cap_m=.30,boundary_miss_penalty_m=.30,
                     required_depth_range_m=[.1,.9],boundary_search_m=[.2,.8])
 DEFAULT_ERRORS=dict(noise_rho=0.,temperature_bias_c=0.,temperature_drift_c_sqrt_s=0.,
                     temperature_quantum_c=0.,position_sigma_m=0.,position_bias_m=0.,

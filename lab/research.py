@@ -97,6 +97,7 @@ def _trial(core,s,mode,policy,budget_s,repeat):
 def run_comparison(core,params,config,budget_s=180,repeats=3,seed=20261020,*,policy=None,split='development',varied=False,errors=None,methods=None,output=None,scenario_set=None):
     if not math.isfinite(budget_s) or not 10<=budget_s<=600:raise ValueError('Trial allowance must be 10–600 s')
     bind(core);p=dict(scenarios.DEFAULT_POLICY,**(policy or {}))
+    evaluation.loss_settings(p)
     methods=tuple(methods or MODES)
     if not methods or len(set(methods))!=len(methods) or any(m not in MODE_IDS for m in methods):raise ValueError('Invalid methods')
     if not(.1<=p['tau_nominal_s']<=8 and p['tau_nominal_s']<=p['tau_max_s']<=16 and 0<p['epsilon_c']<=5 and 0<=p['noise_assumed_c']<=.5):raise ValueError('Invalid frozen policy')
@@ -110,7 +111,7 @@ def run_comparison(core,params,config,budget_s=180,repeats=3,seed=20261020,*,pol
         methods=list(methods),scenarios=definitions,policy=p,policy_sha256=scenarios.policy_digest(p),controller_config=dict(config),
         source_sha256=source_identity(),protocol='One profile per method/scenario. Same maximum allowance including 5 s arming; early completion leaves unused time. Model-based return reserve is common to methods.',
         pairing='Same field, clock and channel realization by scenario; independent digital measurement-noise streams by method. Raw samples are not independent experimental replicates.',
-        primary_contrast='response/forward minus medium/raw, separately by direction; adaptation-only and estimator-only contrasts also reported.',
+        primary_contrast='Failure-aware boundary loss: response/forward minus medium/raw by direction; detection counts and conditional error remain separate. Loss parameters frozen in policy.',
         reconstruction='Raw digitized samples versus forward-fit support temperature at its filtered-regressor support depth. Current-depth extrapolation is diagnostic, not a hidden truth shift.',
         scoring='Median bins on fixed 0.10–0.90 m grid; full-profile RMSE undefined if any required bin is missing. Boundary: strongest binned temperature-gradient peak in 0.20–0.80 m, >=2 C/m, optional local parabolic interpolation. Failures remain in denominators.',
         uncertainty='Scenario-paired bootstrap conditional on joint boundary success. Failure counts and coverage accompany conditional errors; no calibrated onboard confidence interval is claimed.')
@@ -148,7 +149,7 @@ def run_comparison(core,params,config,budget_s=180,repeats=3,seed=20261020,*,pol
         design=manifest['protocol'],limitations=['First-order static local-linear estimator; moving/curved fields and wrong tau can invalidate it.',
             'Onboard residual/conditioning/sigma are reliability proxies, not calibrated confidence intervals.',
             'Toy planar/vertical dynamics and command-based energy; no physical vehicle or wet-probe validation.',
-            'Bootstrap intervals are conditional on joint detector success; show failures and coverage.'],
+            'Conditional bootstrap intervals require joint success; failure-aware loss includes every expected-boundary scenario. Rejection reasons are associations, not causal proof.'],
         trials=trials,metrics=metrics,paired=paired,rows=rows,preview=preview,
         samples_path=str(directory/'samples.csv') if directory else None,run_directory=str(directory) if directory else None)
     if directory:save_comparison(result,directory)

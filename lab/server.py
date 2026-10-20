@@ -205,6 +205,7 @@ class Lab:
     def parse_policy(self,body):
         policy=dict(research.scenarios.DEFAULT_POLICY,**body.get('research_policy',{}))
         if set(policy)!=set(research.scenarios.DEFAULT_POLICY):raise ValueError('Unknown policy setting')
+        research.evaluation.loss_settings(policy)
         if not(.1<=policy['tau_nominal_s']<=8 and policy['tau_nominal_s']<=policy['tau_max_s']<=16 and 0<policy['epsilon_c']<=5 and 0<=policy['noise_assumed_c']<=.5):raise ValueError('Invalid assumed tau / tau bound / tolerance')
         return policy
 
@@ -633,7 +634,7 @@ class Handler(BaseHTTPRequestHandler):
                     writer.writeheader(); writer.writerows(lab.rows)
                 return self.response(output.getvalue().encode(),mime='text/csv')
             return self.response({'error':'Not found'},404)
-        paths = {'/':'index.html','/research-view.mjs':'research-view.mjs','/app.js':'app.js','/style.css':'style.css',
+        paths = {'/':'index.html','/research-view.mjs':'research-view.mjs','/research-summary.mjs':'research-summary.mjs','/app.js':'app.js','/style.css':'style.css',
                  '/demo2d':'index.html','/demo2d/':'index.html','/demo2d.mjs':'demo2d.mjs',
                  '/survey-planner.mjs':'survey-planner.mjs','/thermal-map.mjs':'thermal-map.mjs','/keyboard.mjs':'keyboard.mjs','/demo-model.mjs':'demo-model.mjs','/demo2d.css':'demo2d.css'}
         if url.path not in paths: return self.response({'error':'Not found'},404)

@@ -1,8 +1,16 @@
 # Local laboratory
 
+Start with **Start here**. Set up a vertical profile or open **Compare strategies**. Settings presets help choose water conditions; **Run** opens the live view. Detailed scientific tables and traces expand on demand. See [the follow-up guide](../docs/V015_FOLLOWUP.md) for failure-aware scoring, saved results and rejection diagnostics.
+
 Current version: v0.15. See [research methods](../docs/RESEARCH_V015.md) and [image/protocol guide](../docs/NANO_V015_RESEARCH.md).
 
 See the root [README](../README.md) for setup and firmware upload. Start `python3 lab/server.py` and open http://127.0.0.1:8765/demo2d. The server compiles an isolated C++ controller library per instance; it never overwrites a library mapped by another process. Only one process can own the Nano USB port.
+
+## Guided workflow
+
+Start here introduces the research question and three paths. Single profile visualises one mission; Compare strategies shows the primary response/forward versus raw-baseline comparison, failure-aware loss, full-RMSE availability, and rejection status by depth. Settings holds water/probe parameters and the error cap/miss penalty. Changes apply to the next comparison, never retroactively to saved results.
+
+Loss defaults are 30 cm cap and 30 cm miss penalty. Flat-water false alarms remain separate. Diagnostic strips pool fresh readings by depth; status percentages use an evaluator-only +/-15 cm reference-transition window. They are not calibrated confidence or proof of a failure cause. See [review follow-up](../docs/REVIEW_FOLLOWUP_20261020.md).
 
 ## Activities
 
